@@ -9,7 +9,7 @@ import org.springframework.web.servlet.function.RouterFunction;
 import org.springframework.web.servlet.function.ServerResponse;
 
 @Configuration
-public class Reoutes {
+public class Routes {
     @Bean
     public RouterFunction<ServerResponse> productServiceRoute(){
         return GatewayRouterFunctions.route("product_service")
