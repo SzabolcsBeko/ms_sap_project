@@ -6,6 +6,7 @@ import com.techie.microservices.order.model.Order;
 import com.techie.microservices.order.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.UUID;
 
@@ -16,7 +17,7 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final InventoryClient inventoryClient;
 
-    public void placeOrder(OrderRequest orderRequest){
+    public void placeOrder(@RequestBody OrderRequest orderRequest){
 
         // 1. Using Mockito
         // 2. Use WireMock
