@@ -74,9 +74,26 @@ You should see `mongodb`, `mysql`, `inventory-service-mysql`, `keycloak`, and `k
 
 The gateway is an OAuth2 Resource Server expecting realm **`spring-microservices-security-realm`** at `http://localhost:8181`, and the frontend uses client **`angular-client`**.
 
-> ⚠️ **The realm import files are not in the repository.** `api-gateway/docker-compose.yml` runs Keycloak with `--import-realm` mounting `./docker/keycloak/realms/`, but that folder does not exist in the repo. So Keycloak starts **empty** and you must create the realm/client manually (or drop a realm export into `api-gateway/docker/keycloak/realms/` and restart the container).
+### Automatic setup (realm import) ✅
+`api-gateway/docker-compose.yml` starts Keycloak with `--import-realm` and mounts `./docker/keycloak/realms/`. That folder holds [`realm-export.json`](api-gateway/docker/keycloak/realms/realm-export.json), so on first start Keycloak creates:
 
-### Manual setup (Keycloak admin console)
+| Item | Value |
+|---|---|
+| Realm | `spring-microservices-security-realm` (`sslRequired: none`, local dev only) |
+| Client | `angular-client`: public, Authorization Code + PKCE (S256), direct access grants on, redirect `http://localhost:4200/*`, web origin `http://localhost:4200` |
+| Test user | `testuser` (`testuser@example.com`, Test User). Its password is set in `realm-export.json` |
+
+No manual steps are needed. To confirm, check the logs for `Realm 'spring-microservices-security-realm' imported`:
+
+```bash
+docker logs keycloak 2>&1 | grep -i "imported"
+```
+
+> **Re-import behaviour:** the import strategy is `IGNORE_EXISTING`. If the realm already exists, a restart does **not** re-apply changes from the file. To pick up edits, recreate the container: `docker compose down && docker compose up -d` (in `api-gateway/`).
+>
+> **Dev only:** `sslRequired: none` and the test user are for local development. Never use this realm file in staging or production.
+
+### Manual setup (fallback, Keycloak admin console)
 1. Open `http://localhost:8181` → log in with `admin` / `admin`.
 2. **Create realm** → name: `spring-microservices-security-realm`.
 3. **Create client** for the Angular SPA:
@@ -145,7 +162,7 @@ All calls go through the gateway on `:9000` and require a JWT. First get a token
 TOKEN=$(curl -s -X POST \
   http://localhost:8181/realms/spring-microservices-security-realm/protocol/openid-connect/token \
   -d grant_type=password -d client_id=angular-client \
-  -d username=<user> -d password=<pass> | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+  -d username=testuser -d password=<password from realm-export.json> | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
 ```
 
 ```bash
@@ -232,7 +249,7 @@ cd api-gateway && docker compose down && cd ..
 
 ```text
 1. docker compose up -d   in: product-service, order-service, inventory-service, api-gateway
-2. Configure Keycloak realm 'spring-microservices-security-realm' + client 'angular-client'  (http://localhost:8181)
+2. Keycloak realm + client + testuser are imported automatically from api-gateway/docker/keycloak/realms/  (http://localhost:8181)
 3. Run services (mvn/mvnw spring-boot:run):  inventory → product → order → gateway
 4. Frontend:  cd frontend && npm install && npm start   (http://localhost:4200)
 ```
