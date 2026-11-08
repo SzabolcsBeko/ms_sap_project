@@ -1,7 +1,7 @@
 # MongoDB vs SQL — Datastore Rationale (Polyglot Persistence)
 
 > Companion to [ARCHITECTURE.md](ARCHITECTURE.md) and [DATABASE_CLOUD_STRATEGY.md](DATABASE_CLOUD_STRATEGY.md).
-> Explains **why this system uses MongoDB for the product catalog and relational MySQL for orders and inventory** — and when a document database is the better choice vs a relational one.
+> Explains **why this system uses MongoDB for the product catalog and relational PostgreSQL for orders and inventory** — and when a document database is the better choice vs a relational one.
 > **Date:** 2026‑11‑08 • **Status:** Rationale / reference.
 
 ---
@@ -13,8 +13,8 @@ MongoDB is **not universally "better" than SQL** — it is a better fit for **sp
 | Service | Datastore | Why |
 |---|---|---|
 | **product-service** | MongoDB (document) | Catalog = self-contained, schema-variable, read-mostly aggregates |
-| **order-service** | MySQL (relational) | Orders = relational, transactional, consistency-critical |
-| **inventory-service** | MySQL (relational) | Stock = constraints + ACID (prevent overselling) |
+| **order-service** | PostgreSQL (relational) | Orders = relational, transactional, consistency-critical |
+| **inventory-service** | PostgreSQL (relational) | Stock = constraints + ACID (prevent overselling) |
 
 > **The real lesson:** match the datastore to the data's **shape** and **consistency needs** — not "one database type wins."
 
@@ -84,7 +84,7 @@ MongoDB is **not** the better choice when data is **highly relational and transa
 | **Complex ad-hoc queries / reporting** | Financial/order analytics (`GROUP BY`, aggregates, cross-entity reporting) is mature and expressive in SQL. |
 | **Consistency over availability** | Money and stock must be correct, not merely fast. |
 
-That is why the design puts **money and stock in MySQL** (consistency-critical, relational, transactional) and **the catalog in MongoDB** (flexible, read-heavy, independent documents).
+That is why the design puts **money and stock in PostgreSQL** (consistency-critical, relational, transactional) and **the catalog in MongoDB** (flexible, read-heavy, independent documents).
 
 ---
 
@@ -118,7 +118,7 @@ That is why the design puts **money and stock in MySQL** (consistency-critical, 
 
 | | |
 |---|---|
-| **Decision** | Polyglot persistence — MongoDB for the catalog, MySQL (→ PostgreSQL per the cloud strategy) for orders and inventory. |
+| **Decision** | Polyglot persistence — MongoDB for the catalog, PostgreSQL (moved from MySQL per the cloud strategy) for orders and inventory. |
 | **Driver** | Match datastore to data shape + consistency needs. |
 | **Catalog → MongoDB** | Independent, schema-variable, read-mostly aggregates. |
 | **Orders/Inventory → SQL** | Relational, ACID, constraint-enforced, consistency-critical. |

@@ -1,5 +1,5 @@
 meta {
-  name: 3. Inventory (inventory-service, MySQL)
+  name: 3. Inventory (inventory-service, PostgreSQL)
   seq: 4
 }
 
@@ -8,7 +8,7 @@ auth {
 }
 
 docs {
-  Flow: client → gateway → inventory-service → MySQL.
+  Flow: client → gateway → inventory-service → PostgreSQL.
   
   The answer is a plain `true`/`false`: is there a row with this SKU and at least this quantity? Each seeded SKU has 100 units, and the number never changes (orders do not decrement it; see folder 5).
 }

@@ -25,7 +25,7 @@ The scripts deliberately use a small, common subset of the Postman API that all 
 - Bruno deliberately does **not** translate `pm.collectionVariables.set`. Values the scripts store (`accessToken`, `createdProductId`) therefore live in the **environment**, via `pm.environment.set`, which becomes `bru.setEnvVar` in Bruno.
 - Bruno turns `pm.response.text()` into `JSON.stringify(res.getBody())`, which wraps plain-text bodies in quotes. So plain-text checks use `to.include(...)` instead of an exact match.
 
-> **How it was verified:** every request and assertion was run against the live stack: folders 0–5 pass **44/44** in both the Postman JSON and the native Bruno files, and folder 6 was checked with the services stopped. If a script doesn't convert in your tool version, the requests still work; you just check the result by eye.
+> **How it was verified:** every request and assertion was run against the live stack: folders 0–5 pass **44/44** in both the Postman JSON and the native Bruno files, and folder 6 was checked with the services stopped. After the move of order-service and inventory-service to PostgreSQL 16, folders 0–5 were re-run with newman: **44/44** pass. If a script doesn't convert in your tool version, the requests still work; you just check the result by eye.
 
 ---
 
@@ -110,7 +110,7 @@ Folders **0–5 are automated** (run in order, top to bottom). Folder **6 is man
 | 2.2 | List products | 200, array that contains the new product |
 | 2.3 | Malformed JSON | 400 |
 
-### 3. Inventory: gateway → inventory-service → MySQL
+### 3. Inventory: gateway → inventory-service → PostgreSQL
 | # | Request | Expected |
 |---|---|---|
 | 3.1 | `iphone_15`, quantity 1 | `true` |
@@ -119,7 +119,7 @@ Folders **0–5 are automated** (run in order, top to bottom). Folder **6 is man
 | 3.4 | unknown SKU `nokia_3310` | `false` |
 | 3.5 | missing `quantity` parameter | 400 |
 
-### 4. Order flow: gateway → order-service → inventory-service → MySQL
+### 4. Order flow: gateway → order-service → inventory-service → PostgreSQL
 | # | Request | Expected |
 |---|---|---|
 | 4.1 | Place order, in stock | 201 `Order Placed Successfully` |

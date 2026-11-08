@@ -448,8 +448,8 @@
       ]
     },
     {
-      "name": "3. Inventory (inventory-service, MySQL)",
-      "description": "Flow: client → gateway → inventory-service → MySQL.\n\nThe answer is a plain `true`/`false`: is there a row with this SKU and at least this quantity? Each seeded SKU has 100 units, and the number never changes (orders do not decrement it; see folder 5).",
+      "name": "3. Inventory (inventory-service, PostgreSQL)",
+      "description": "Flow: client → gateway → inventory-service → PostgreSQL.\n\nThe answer is a plain `true`/`false`: is there a row with this SKU and at least this quantity? Each seeded SKU has 100 units, and the number never changes (orders do not decrement it; see folder 5).",
       "item": [
         {
           "name": "In stock (quantity 1)",
@@ -663,7 +663,7 @@
     },
     {
       "name": "4. Order flow (order-service → inventory-service)",
-      "description": "Flow: client → gateway → order-service → **inventory-service** (REST call through Resilience4j circuit breaker + retry) → order saved in MySQL.\n\nThis is the only service-to-service call in the system.",
+      "description": "Flow: client → gateway → order-service → **inventory-service** (REST call through Resilience4j circuit breaker + retry) → order saved in PostgreSQL.\n\nThis is the only service-to-service call in the system.",
       "item": [
         {
           "name": "Place order (in stock)",
