@@ -1,0 +1,35 @@
+meta {
+  name: Place order (unknown SKU) → 500
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{gatewayUrl}}/api/order
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "skuCode": "nokia_3310",
+    "price": 10,
+    "quantity": 1
+  }
+}
+
+script:post-response {
+  test('Status is 500', function () { expect(res.getStatus()).to.eql(500); });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Same as out of stock: no inventory row, so `false`, so 500.
+}

@@ -1,0 +1,28 @@
+meta {
+  name: Direct call to inventory-service without token (bypasses gateway)
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{inventoryServiceUrl}}/api/inventory?skuCode={{inStockSku}}&quantity=1
+  body: none
+  auth: none
+}
+
+params:query {
+  skuCode: {{inStockSku}}
+  quantity: 1
+}
+
+script:post-response {
+  test('Status is 200', function () { expect(res.getStatus()).to.eql(200); });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Same gap on inventory-service (port 8082).
+}

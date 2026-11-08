@@ -1,0 +1,31 @@
+meta {
+  name: Malformed JSON → 400
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{gatewayUrl}}/api/product
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"name": 
+}
+
+script:post-response {
+  test('Status is 400', function () { expect(res.getStatus()).to.eql(400); });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Broken JSON body. Spring cannot parse it and answers 400 Bad Request.
+}

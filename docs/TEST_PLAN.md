@@ -7,30 +7,33 @@
 
 ## 1. What's in the box
 
-| File | Purpose |
-|---|---|
-| [`api-tests/microservices-shop.postman_collection.json`](../api-tests/microservices-shop.postman_collection.json) | 31 requests in 7 folders, each with a description and test assertions |
-| [`api-tests/local.postman_environment.json`](../api-tests/local.postman_environment.json) | Connection settings for the local stack (URLs, realm, client, test user) |
-
-**Format:** Postman Collection **v2.1**, the format all three tools can import:
-
-| Tool | Imports the collection | Runs the test scripts |
+| File | Purpose | Use it with |
 |---|---|---|
-| **Postman** | natively | natively |
-| **Bruno** | yes (Postman importer) | the importer translates `pm.*` to Bruno's `bru`/`res` API |
-| **Insomnia** (v9+) | yes (Postman importer) | the importer maps them to Insomnia's after-response scripts (Postman-compatible API) |
+| [`api-tests/microservices-shop.postman_collection.json`](../api-tests/microservices-shop.postman_collection.json) | 31 requests in 7 folders, each with a description and test assertions | Postman, Insomnia (Bruno: via Import) |
+| [`api-tests/local.postman_environment.json`](../api-tests/local.postman_environment.json) | Connection settings for the local stack (URLs, realm, client, test user) | Postman, Insomnia (Bruno: via Import) |
+| [`api-tests/bruno/`](../api-tests/bruno/) | The same collection as a **native Bruno collection** (`.bru` files), environment included | Bruno: **Open Collection** |
 
-The scripts deliberately use a small, common subset of the Postman API: `pm.test`, `pm.expect`, `pm.response.code/json()/text()/headers.get()/responseTime`, `pm.collectionVariables.get/set`. That's the part the Bruno and Insomnia importers convert.
+**Format:** Postman Collection **v2.1** is the source. The `bruno/` folder is generated from it with Bruno's own converter, exactly what Bruno would write when importing.
 
-> **How it was verified:** every request and assertion was run against the live stack (folders 0–5: **44/44 assertions pass**; folder 6 checked with the services stopped). That run used a Postman-format runner with the subset of `pm.*` above, not the Postman, Insomnia or Bruno apps themselves. Requests import the same everywhere. If a test script doesn't convert in your tool version, the requests still work; you just check the result by eye.
+| Tool | How to load it | Test scripts | Verified |
+|---|---|---|---|
+| **Postman** | Import the two JSON files | native | 44/44 assertions with a Postman-semantics runner (Postman app not installed here) |
+| **Bruno** | **Open Collection** → `api-tests/bruno` (or Import the JSON) | translated to Bruno's `bru`/`res` API | **Bruno 3.4.2's own converter and parser**; the `.bru` files pass 44/44 against the live stack |
+| **Insomnia** (v9+) | Import the two JSON files | mapped to Insomnia's after-response scripts | **not verified** (Insomnia not installed here) |
+
+The scripts deliberately use a small, common subset of the Postman API that all three can handle: `pm.test`, `pm.expect`, `pm.response.code/json()/text()/headers.get()/responseTime`, and **`pm.environment.get/set`**. Two Bruno details shaped this:
+- Bruno deliberately does **not** translate `pm.collectionVariables.set`. Values the scripts store (`accessToken`, `createdProductId`) therefore live in the **environment**, via `pm.environment.set`, which becomes `bru.setEnvVar` in Bruno.
+- Bruno turns `pm.response.text()` into `JSON.stringify(res.getBody())`, which wraps plain-text bodies in quotes. So plain-text checks use `to.include(...)` instead of an exact match.
+
+> **How it was verified:** every request and assertion was run against the live stack: folders 0–5 pass **44/44** in both the Postman JSON and the native Bruno files, and folder 6 was checked with the services stopped. If a script doesn't convert in your tool version, the requests still work; you just check the result by eye.
 
 ---
 
 ## 2. Before you start
 
 1. Start the stack: `./launch.sh` (see [RUNNING.md](RUNNING.md)).
-2. Import the collection and the environment (below), and select the environment **"Microservices Shop: local"**.
-3. Run **folder 0 → Get access token** first. It stores the JWT in the `accessToken` variable, which every request sends as `Authorization: Bearer …` (set once at collection level). Tokens last **5 minutes**. When requests start returning 401, run it again.
+2. Load the collection (below) and **select the environment "Microservices Shop: local"**. It's required, because the test scripts save the token into it.
+3. Run **folder 0 → Get access token** first. It stores the JWT in the `accessToken` environment variable, which every request sends as `Authorization: Bearer …` (set once at collection level). Tokens last **5 minutes**. When requests start returning 401, run it again.
 
 ### Variables
 
@@ -42,7 +45,9 @@ The scripts deliberately use a small, common subset of the Postman API: `pm.test
 | `username` / `password` | `testuser` / (from the realm file) | the dev test user from `realm-export.json` |
 | `productServiceUrl`, `orderServiceUrl`, `inventoryServiceUrl` | `:8080`, `:8081`, `:8082` | used only for direct calls (actuator, gateway-bypass checks) |
 | `inStockSku` | `iphone_15` | any seeded SKU: iphone_15, pixel_8, galaxy_24, oneplus_12 |
-| `accessToken`, `createdProductId` | (set by scripts) | collection variables; deliberately **not** in the environment file, because an environment value would shadow what the scripts store |
+| `accessToken`, `createdProductId` | (empty; set by scripts) | environment variables, written by `pm.environment.set` (Bruno: `bru.setEnvVar`) |
+
+All variables are plain (none typed "secret"), because Bruno never writes secret values into its environment files and the test password would go missing. The password is the dev-only test user's.
 
 ---
 
@@ -54,9 +59,18 @@ The scripts deliberately use a small, common subset of the Postman API: `pm.test
 3. Run: right-click the collection → **Run collection** → untick **folder 6** → **Run**.
 
 ### Bruno
-1. **Import Collection** → **Postman Collection** → pick `microservices-shop.postman_collection.json` → choose where Bruno should store it (Bruno saves collections as folders of `.bru` files).
-2. Collection **Settings → Environments → Import** → pick `local.postman_environment.json` → select it.
+> **Why "Open Collection" can't open the JSON files:** in Bruno, *Open Collection* opens a **folder** that already contains a Bruno collection (`bruno.json`). JSON files go through **Import**. An environment file is never opened on its own; it's imported inside a collection's settings.
+
+**Option A (recommended): open the native collection**
+1. **Open Collection** → select the folder **`api-tests/bruno`** (the folder itself, not a file inside it).
+2. Top-right environment selector → **Microservices Shop: local** (the environment is already inside the folder).
 3. Run: right-click the collection → **Run**, or run folders one at a time (skip folder 6).
+
+Bruno edits these `.bru` files in place, so changes you make in Bruno show up in git.
+
+**Option B: import the Postman JSON**
+1. **Import Collection** → choose `microservices-shop.postman_collection.json` (Bruno detects the Postman format) → pick a location where Bruno creates a new collection folder.
+2. Collection **Settings → Environments → Import** → pick `local.postman_environment.json` → select it.
 
 ### Insomnia (v9 or newer)
 1. **Import** → **File** → pick the collection, then import the environment file the same way.
@@ -65,7 +79,9 @@ The scripts deliberately use a small, common subset of the Postman API: `pm.test
 
 ### Command line (optional)
 - **Postman/newman:** `npx newman run api-tests/microservices-shop.postman_collection.json -e api-tests/local.postman_environment.json --folder "0. Setup & smoke" --folder "1. Security (gateway edge)" ...` (one `--folder` per folder 0–5).
-- **Bruno CLI:** after importing into Bruno, run `bru run --env "Microservices Shop: local"` inside the Bruno collection folder.
+- **Bruno CLI:** `cd api-tests/bruno && bru run "0. Setup & smoke" --env "Microservices Shop: local"` (repeat per folder 0–5; requires `npm i -g @usebruno/cli`).
+
+> **Keeping the formats in sync:** the Postman JSON is the source and `api-tests/bruno/` is generated from it. If you change the JSON, re-create the Bruno folder (Import it into Bruno at that location, replacing the old folder), or make the same change in both.
 
 ---
 
@@ -186,4 +202,5 @@ What to learn from it:
 - **401 everywhere:** the token expired (5 min). Run 0.1 again.
 - **Connection refused:** the stack isn't running. Check with `./launch.sh status`.
 - **4.5 fails with `OPEN`/`HALF_OPEN`:** you ran folder 6 recently. Place 3 successful orders, or wait, and run it again.
-- **Test scripts didn't import (Insomnia/Bruno):** the requests still work. Copy the `access_token` from the 0.1 response into the `accessToken` variable by hand and compare results with the matrix above.
+- **Every request after 0.1 returns 401:** no environment is selected, so the token had nowhere to be saved. Select **Microservices Shop: local** and run 0.1 again.
+- **Test scripts didn't import (Insomnia):** the requests still work. Copy the `access_token` from the 0.1 response into the `accessToken` environment variable by hand and compare results with the matrix above.

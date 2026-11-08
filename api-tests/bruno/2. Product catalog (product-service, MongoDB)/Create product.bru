@@ -1,0 +1,45 @@
+meta {
+  name: Create product
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{gatewayUrl}}/api/product
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "name": "iPhone 15",
+    "description": "Apple smartphone, created by the API test plan",
+    "skuCode": "{{inStockSku}}",
+    "price": 999.99
+  }
+}
+
+script:post-response {
+  test('Status is 201', function () { expect(res.getStatus()).to.eql(201); });
+  const p = res.getBody();
+  test('Product has an id and the sent fields', function () {
+    expect(p.id).to.be.a('string');
+    expect(p.skuCode).to.eql(bru.getEnvVar('inStockSku'));
+    expect(p.price).to.eql(999.99);
+  });
+  bru.setEnvVar('createdProductId', p.id);
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Creates a product whose SKU matches seeded inventory (`{{inStockSku}}`), so it can be ordered. MongoDB assigns the `id`; the test stores it in `createdProductId`.
+  
+  Creating a product does **not** create stock. Only the four seeded SKUs (iphone_15, pixel_8, galaxy_24, oneplus_12) are orderable.
+}

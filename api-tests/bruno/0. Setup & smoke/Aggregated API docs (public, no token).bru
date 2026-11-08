@@ -1,0 +1,26 @@
+meta {
+  name: Aggregated API docs (public, no token)
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{gatewayUrl}}/aggregate/product-service/v3/api-docs
+  body: none
+  auth: none
+}
+
+script:post-response {
+  test('Status is 200', function () { expect(res.getStatus()).to.eql(200); });
+  test('Returns an OpenAPI document', function () {
+    expect(res.getBody().openapi).to.be.a('string');
+  });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  The gateway proxies each service's OpenAPI document under `/aggregate/**`, which is public (no token). This is what feeds the Swagger UI at `{{gatewayUrl}}/swagger-ui.html`.
+}

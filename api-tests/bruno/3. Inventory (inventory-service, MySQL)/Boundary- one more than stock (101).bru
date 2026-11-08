@@ -1,0 +1,31 @@
+meta {
+  name: Boundary: one more than stock (101)
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{gatewayUrl}}/api/inventory?skuCode={{inStockSku}}&quantity=101
+  body: none
+  auth: inherit
+}
+
+params:query {
+  skuCode: {{inStockSku}}
+  quantity: 101
+}
+
+script:post-response {
+  test('Status is 200', function () { expect(res.getStatus()).to.eql(200); });
+  test('In stock = false', function () {
+    expect(JSON.stringify(res.getBody()).trim()).to.eql('false');
+  });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  101 exceeds the 100 seeded units.
+}

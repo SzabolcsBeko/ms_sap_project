@@ -1,0 +1,23 @@
+meta {
+  name: Get product by id is not implemented → 404
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{gatewayUrl}}/api/product/{{createdProductId}}
+  body: none
+  auth: inherit
+}
+
+script:post-response {
+  test('Status is 404', function () { expect(res.getStatus()).to.eql(404); });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  product-service only has list and create. There is no `GET /api/product/{id}`.
+}

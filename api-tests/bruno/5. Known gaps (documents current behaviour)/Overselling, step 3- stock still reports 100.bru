@@ -1,0 +1,31 @@
+meta {
+  name: Overselling, step 3: stock still reports 100
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{gatewayUrl}}/api/inventory?skuCode=pixel_8&quantity=100
+  body: none
+  auth: inherit
+}
+
+params:query {
+  skuCode: pixel_8
+  quantity: 100
+}
+
+script:post-response {
+  test('Status is 200', function () { expect(res.getStatus()).to.eql(200); });
+  test('Stock was never decremented', function () {
+    expect(JSON.stringify(res.getBody()).trim()).to.eql('true');
+  });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Inventory still says 100 units are available after selling 200.
+}

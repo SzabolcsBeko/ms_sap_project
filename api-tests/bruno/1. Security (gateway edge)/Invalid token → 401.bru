@@ -1,0 +1,27 @@
+meta {
+  name: Invalid token → 401
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{gatewayUrl}}/api/product
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: abc.def.ghi
+}
+
+script:post-response {
+  test('Status is 401', function () { expect(res.getStatus()).to.eql(401); });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  A syntactically JWT-shaped but fake token. Signature validation fails, so the gateway returns 401.
+}

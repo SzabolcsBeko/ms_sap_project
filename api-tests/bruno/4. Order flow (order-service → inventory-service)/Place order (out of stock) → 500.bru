@@ -1,0 +1,35 @@
+meta {
+  name: Place order (out of stock) → 500
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{gatewayUrl}}/api/order
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "skuCode": "{{inStockSku}}",
+    "price": 999.99,
+    "quantity": 1000
+  }
+}
+
+script:post-response {
+  test('Status is 500', function () { expect(res.getStatus()).to.eql(500); });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  inventory-service answers `false`, and order-service throws a RuntimeException. Current behaviour is a generic **500**, not a 4xx like 409 or 422. Nothing is saved.
+}

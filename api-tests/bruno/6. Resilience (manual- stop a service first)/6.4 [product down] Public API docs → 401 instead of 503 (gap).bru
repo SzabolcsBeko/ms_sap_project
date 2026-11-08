@@ -1,0 +1,23 @@
+meta {
+  name: 6.4 [product down] Public API docs → 401 instead of 503 (gap)
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{gatewayUrl}}/aggregate/product-service/v3/api-docs
+  body: none
+  auth: none
+}
+
+script:post-response {
+  test('Status is 401', function () { expect(res.getStatus()).to.eql(401); });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Same outage, but on a **public** route and without a token. The circuit breaker forwards to `/fallbackRoute`, and that path is not in the gateway's public URL list (`SecurityConfig`), so Spring Security rejects the forwarded request: an anonymous caller gets **401** instead of 503. Fix: permit `/fallbackRoute` in `SecurityConfig`. When fixed, this test should expect 503.
+}

@@ -1,0 +1,36 @@
+meta {
+  name: 6.1 [inventory down] Place order → fast 500 via fallback
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{gatewayUrl}}/api/order
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "skuCode": "{{inStockSku}}",
+    "price": 999.99,
+    "quantity": 1
+  }
+}
+
+script:post-response {
+  test('Status is 500', function () { expect(res.getStatus()).to.eql(500); });
+  test('Fails fast (under 2 s)', function () { expect(res.getResponseTime()).to.be.below(2000); });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  inventory-service is stopped. The InventoryClient call fails, the `@CircuitBreaker` fallback returns `false` ("not in stock"), and order-service answers 500. Because the fallback swallows the error, `@Retry` does not retry, so the answer comes back in milliseconds instead of hanging. order-service logs `Cannot get inventory for skuCode ...`.
+}

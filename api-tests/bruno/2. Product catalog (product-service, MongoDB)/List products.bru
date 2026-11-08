@@ -1,0 +1,29 @@
+meta {
+  name: List products
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{gatewayUrl}}/api/product
+  body: none
+  auth: inherit
+}
+
+script:post-response {
+  test('Status is 200', function () { expect(res.getStatus()).to.eql(200); });
+  const list = res.getBody();
+  test('Response is an array', function () { expect(list).to.be.an('array'); });
+  test('Contains the product created earlier', function () {
+    const id = bru.getEnvVar('createdProductId');
+    expect(list.map(function (p) { return p.id; })).to.include(id);
+  });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Returns every product. The test checks that the product created in the previous request is in the list.
+}

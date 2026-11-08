@@ -1,0 +1,35 @@
+meta {
+  name: Overselling, step 1: order all 100 units
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{gatewayUrl}}/api/order
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "skuCode": "pixel_8",
+    "price": 699,
+    "quantity": 100
+  }
+}
+
+script:post-response {
+  test('Status is 201', function () { expect(res.getStatus()).to.eql(201); });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Orders the entire stock of pixel_8 (100 units).
+}

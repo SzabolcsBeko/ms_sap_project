@@ -1,0 +1,32 @@
+meta {
+  name: Microservices Shop: API test plan
+}
+
+auth {
+  mode: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+vars:pre-request {
+  gatewayUrl: http://localhost:9000
+  keycloakUrl: http://localhost:8181
+  realm: spring-microservices-security-realm
+  clientId: angular-client
+  username: testuser
+  password: test1234
+  productServiceUrl: http://localhost:8080
+  orderServiceUrl: http://localhost:8081
+  inventoryServiceUrl: http://localhost:8082
+  inStockSku: iphone_15
+}
+
+docs {
+  Learn and check the flows of the microservices shop: Keycloak login, API gateway security, product catalog, inventory, order placement (order → inventory), known gaps, and resilience (circuit breakers, fallbacks).
+  
+  Start the stack with `./launch.sh`, then run folders 0–5 in order (automated). Folder 6 is manual. Full guide: `docs/TEST_PLAN.md`.
+  
+  Format: Postman Collection v2.1. Also imports into Insomnia and Bruno.
+}

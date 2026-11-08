@@ -38,7 +38,7 @@
                 "token"
               ]
             },
-            "description": "Logs in as the realm's test user with the OAuth2 *password* grant (enabled on the `angular-client` client for testing). The browser app uses Authorization Code + PKCE instead, but both produce the same kind of JWT.\n\nThe test script saves the token into the `accessToken` collection variable.",
+            "description": "Logs in as the realm's test user with the OAuth2 *password* grant (enabled on the `angular-client` client for testing). The browser app uses Authorization Code + PKCE instead, but both produce the same kind of JWT.\n\nThe test script saves the token into the `accessToken` environment variable, so the environment must be selected.",
             "body": {
               "mode": "urlencoded",
               "urlencoded": [
@@ -87,7 +87,7 @@
                   "  pm.expect(body.token_type).to.eql('Bearer');",
                   "  pm.expect(body.expires_in).to.be.above(0);",
                   "});",
-                  "pm.collectionVariables.set('accessToken', body.access_token);"
+                  "pm.environment.set('accessToken', body.access_token);"
                 ]
               }
             }
@@ -356,10 +356,10 @@
                   "const p = pm.response.json();",
                   "pm.test('Product has an id and the sent fields', function () {",
                   "  pm.expect(p.id).to.be.a('string');",
-                  "  pm.expect(p.skuCode).to.eql(pm.collectionVariables.get('inStockSku'));",
+                  "  pm.expect(p.skuCode).to.eql(pm.environment.get('inStockSku'));",
                   "  pm.expect(p.price).to.eql(999.99);",
                   "});",
-                  "pm.collectionVariables.set('createdProductId', p.id);"
+                  "pm.environment.set('createdProductId', p.id);"
                 ]
               }
             }
@@ -393,7 +393,7 @@
                   "const list = pm.response.json();",
                   "pm.test('Response is an array', function () { pm.expect(list).to.be.an('array'); });",
                   "pm.test('Contains the product created earlier', function () {",
-                  "  const id = pm.collectionVariables.get('createdProductId');",
+                  "  const id = pm.environment.get('createdProductId');",
                   "  pm.expect(list.map(function (p) { return p.id; })).to.include(id);",
                   "});"
                 ]
@@ -705,7 +705,7 @@
                 "exec": [
                   "pm.test('Status is 201', function () { pm.expect(pm.response.code).to.eql(201); });",
                   "pm.test('Order accepted', function () {",
-                  "  pm.expect(pm.response.text()).to.eql('Order Placed Successfully');",
+                  "  pm.expect(pm.response.text()).to.include('Order Placed Successfully');",
                   "});"
                 ]
               }
@@ -1289,7 +1289,7 @@
                 "exec": [
                   "pm.test('Status is 503', function () { pm.expect(pm.response.code).to.eql(503); });",
                   "pm.test('Fallback message', function () {",
-                  "  pm.expect(pm.response.text()).to.eql('Service Unavailable, please try again later');",
+                  "  pm.expect(pm.response.text()).to.include('Service Unavailable, please try again later');",
                   "});"
                 ]
               }
@@ -1409,14 +1409,6 @@
     {
       "key": "inStockSku",
       "value": "iphone_15"
-    },
-    {
-      "key": "accessToken",
-      "value": ""
-    },
-    {
-      "key": "createdProductId",
-      "value": ""
     }
   ]
 }

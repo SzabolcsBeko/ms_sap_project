@@ -1,0 +1,14 @@
+meta {
+  name: 0. Setup & smoke
+  seq: 1
+}
+
+auth {
+  mode: inherit
+}
+
+docs {
+  Run this folder first. It logs in to Keycloak and stores the access token in the `accessToken` variable, which every other request sends as `Authorization: Bearer ...` (configured once at collection level).
+  
+  Tokens live 5 minutes (realm setting). If requests start returning 401, run **Get access token** again.
+}
