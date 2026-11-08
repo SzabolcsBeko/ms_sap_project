@@ -5,6 +5,50 @@
 
 ---
 
+## 0. Quick start: `launch.sh` (one command)
+
+[`launch.sh`](../launch.sh) in the repository root starts everything in order. It waits until each component answers before it starts the next one, and the frontend always comes last:
+
+```text
+1. Infrastructure (Docker Compose): MongoDB, MySQL (order), MySQL (inventory), Keycloak
+2. inventory-service :8082
+3. product-service   :8080
+4. order-service     :8081
+5. api-gateway       :9000
+6. frontend          :4200
+```
+
+```bash
+./launch.sh            # start everything (same as ./launch.sh start)
+```
+
+```bash
+./launch.sh status     # what is running
+```
+
+```bash
+./launch.sh stop       # stop the frontend and the four services (Docker infrastructure keeps running)
+```
+
+```bash
+./launch.sh stop --all # also run docker compose down for the infrastructure
+```
+
+How it behaves:
+- **Preflight:** checks Docker, Java 21+, Node and that ports 8080, 8081, 8082, 9000 and 4200 are free. If a port is taken it names the process or Docker container and starts **nothing**.
+- **Readiness:** databases are checked with `mysqladmin ping` / `mongosh ping`, Keycloak by its realm URL, services by `GET /api-docs`, the frontend by HTTP on :4200.
+- **Fails fast:** if a container or service dies during startup, it stops right away and prints the relevant log lines instead of waiting for the timeout.
+- **Runs in the background:** apps keep running after the script returns. Logs are in `.run/logs/<name>.log`, PIDs in `.run/pids/`. `stop` kills each app's whole process tree, so no orphaned JVMs are left.
+- **No Maven install needed:** every service runs through `product-service`'s Maven wrapper (`order-service` and `inventory-service` have none of their own).
+- **Timeouts** default to 240s (infrastructure, services) and 300s (frontend). Override with `INFRA_TIMEOUT`, `SERVICE_TIMEOUT`, `FRONTEND_TIMEOUT`, e.g. `SERVICE_TIMEOUT=400 ./launch.sh`.
+- The first run is slower: it downloads Maven dependencies, runs `npm ci` and pulls Docker images.
+
+> **Data folders:** each database keeps its data in a bind-mounted folder that Docker creates on first start (`product-service/data`, `order-service/mysql`, `inventory-service/docker/mysql/data`, `api-gateway/volume-data`). They are git-ignored. To start over with empty databases, run `./launch.sh stop --all` and delete them.
+
+The rest of this guide describes the same steps done by hand.
+
+---
+
 ## 1. Prerequisites
 
 | Tool | Version | Check |
@@ -235,6 +279,7 @@ cd api-gateway && docker compose down && cd ..
 
 | Symptom | Likely cause / fix |
 |---|---|
+| `mongodb`, `mysql` or `keycloak-mysql` exits right after start (`WiredTiger metadata corruption`, or MySQL refusing a non-empty data directory) | The container's data folder is corrupt or half-written (e.g. Docker was killed mid-write). Run `./launch.sh stop --all`, delete that folder (`product-service/data`, `order-service/mysql` or `api-gateway/volume-data`) and start again. The container initializes it fresh, Flyway recreates the tables and the inventory seed, and Keycloak re-imports the realm. These folders used to be committed to git in an incomplete state; they are now git-ignored. |
 | `401 Unauthorized` on API calls | No/expired JWT, or realm/client not set up in Keycloak (see §4). Confirm `issuer-uri` realm name matches. |
 | Login redirect fails / CORS error | `angular-client` redirect URIs / web origins not set to `http://localhost:4200`. |
 | order fails: *"not in stock"* | SKU has no inventory row, or quantity exceeds stock. Seed via `V2__add_inventory.sql` SKUs or add rows. |
@@ -248,6 +293,9 @@ cd api-gateway && docker compose down && cd ..
 ## 12. Quick reference — one-glance startup
 
 ```text
+One command:  ./launch.sh        (stop: ./launch.sh stop [--all])
+
+By hand:
 1. docker compose up -d   in: product-service, order-service, inventory-service, api-gateway
 2. Keycloak realm + client + testuser are imported automatically from api-gateway/docker/keycloak/realms/  (http://localhost:8181)
 3. Run services (mvn/mvnw spring-boot:run):  inventory → product → order → gateway
