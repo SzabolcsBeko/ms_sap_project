@@ -359,6 +359,7 @@ ENTRYPOINT ["java","-jar","/app/app.jar"]
 Jib alternative avoids needing a Docker daemon entirely in CI.
 
 ### 7.3 Frontend Dockerfile (Nginx static serve)
+
 ```dockerfile
 FROM node:20 AS build
 WORKDIR /app

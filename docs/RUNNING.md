@@ -75,7 +75,7 @@ You should see `mongodb`, `mysql`, `inventory-service-mysql`, `keycloak`, and `k
 The gateway is an OAuth2 Resource Server expecting realm **`spring-microservices-security-realm`** at `http://localhost:8181`, and the frontend uses client **`angular-client`**.
 
 ### Automatic setup (realm import) ✅
-`api-gateway/docker-compose.yml` starts Keycloak with `--import-realm` and mounts `./docker/keycloak/realms/`. That folder holds [`realm-export.json`](api-gateway/docker/keycloak/realms/realm-export.json), so on first start Keycloak creates:
+`api-gateway/docker-compose.yml` starts Keycloak with `--import-realm` and mounts `./docker/keycloak/realms/`. That folder holds [`realm-export.json`](../api-gateway/docker/keycloak/realms/realm-export.json), so on first start Keycloak creates:
 
 | Item | Value |
 |---|---|
