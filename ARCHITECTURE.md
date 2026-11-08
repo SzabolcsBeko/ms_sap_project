@@ -50,6 +50,10 @@ The only **inter-service** call is `order-service → inventory-service` (synchr
 
 ### 3.1 Component / Deployment diagram
 
+![Service-to-service communication architecture](docs/service_communication_architecture.png)
+
+*Service-to-service communication: every link is synchronous REST/HTTP. The only direct service-to-service call is `order-service → inventory-service` (`isInStock`).*
+
 ```mermaid
 flowchart TB
     subgraph Client["Browser"]
