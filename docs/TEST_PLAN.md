@@ -1,6 +1,6 @@
-# API Test Plan: Postman / Insomnia / Bruno
+# Test Plan: API (Postman / Insomnia / Bruno) and UI (browser)
 
-> Companion to [ARCHITECTURE.md](ARCHITECTURE.md) and [RUNNING.md](RUNNING.md). A hands-on collection for learning the system's flows and checking how each microservice behaves, including failures.
+> Companion to [ARCHITECTURE.md](ARCHITECTURE.md) and [RUNNING.md](RUNNING.md). A hands-on collection for learning the system's flows and checking how each microservice behaves, including failures, plus a manual walkthrough of the web app ([§6](#6-ui-testing-the-web-app-in-the-browser)).
 > **Date:** 2026‑11‑08
 
 ---
@@ -145,7 +145,7 @@ When one of these gaps is fixed, its test fails, and that's the signal to update
 | 6.1 | inventory-service stopped | Place order | **500 in milliseconds** (fallback, no hang) |
 | 6.2 | after 6.1 five or more times | `GET :8081/actuator/circuitbreakers` | `inventory` breaker **OPEN** |
 | 6.3 | product-service stopped | `GET /api/product` (with token) | **503** `Service Unavailable, please try again later` |
-| 6.4 | product-service stopped | public API docs, no token | **401** instead of 503 (gap, see §6) |
+| 6.4 | product-service stopped | public API docs, no token | **401** instead of 503 (gap, see §7) |
 | 6.5 | after `./launch.sh` + 3 successful orders | `GET :8081/actuator/circuitbreakers` | breaker **CLOSED** again |
 
 ---
@@ -182,7 +182,78 @@ What to learn from it:
 
 ---
 
-## 6. Findings this test plan surfaced
+## 6. UI testing: the web app in the browser
+
+The API collection checks the services. This section walks through the **Angular web app** the way a user would, and shows where to look in the browser's developer tools to see the same flows (login → gateway → services).
+
+Everything below was observed in the running app (Angular 18 dev server, Keycloak 24) on 2026‑11‑08.
+
+### 6.1 Before you start
+
+1. Start everything: `./launch.sh` (the frontend is the last step, at http://localhost:4200).
+2. Use a **browser window at least 768 px wide**. Below that width the header collapses into a ☰ button that does nothing, so the **Login** link can't be reached (see UI‑1 in §6.5).
+3. Open the developer tools: **Network** tab (filter `9000` for API calls, `8181` for Keycloak) and **Console** tab.
+4. Test user: `testuser`, with the password from `api-gateway/docker/keycloak/realms/realm-export.json`.
+
+> **Reload between scenarios.** The page keeps its last success/failure message until it's reloaded (UI‑2), and a silent logout leaves stale data on screen (UI‑4). A reload gives each scenario a clean start.
+
+### 6.2 What happens behind the scenes
+
+| You do | Browser → | Network tab shows |
+|---|---|---|
+| Open the app logged out | app → gateway | `GET :9000/api/product → 401` (no token yet) |
+| Click **Login** | app → Keycloak | redirect to `:8181/…/auth?response_type=code&code_challenge_method=S256` (Authorization Code + PKCE) |
+| Sign in | Keycloak → app | redirect back to `:4200`, then `POST :8181/…/token` (code exchanged for tokens) |
+| Product list loads | app → gateway → product-service | `OPTIONS :9000/api/product → 200` (CORS preflight), `GET :9000/api/product → 200` with `Authorization: Bearer …` |
+| **Order Now** | app → gateway → order-service → inventory-service | `POST :9000/api/order → 201` (or 500 when out of stock) |
+| **Add Product** | app → gateway → product-service | `POST :9000/api/product → 201` |
+| About 4.5 min after login | app → Keycloak | `POST :8181/…/token → 200` (refresh). The app then **rejects** the result and logs you out (UI‑3) |
+
+### 6.3 Test cases
+
+Run them in order. "Expected" is what the app does today; ⚠ marks behaviour that is a known bug (§6.5).
+
+| # | Scenario | Steps | Expected |
+|---|---|---|---|
+| UI‑01 | Anonymous home page | Open http://localhost:4200 | Header: **Login**. Page: **"Products (0)"** and **"No products found!"**, even though products exist ⚠ (the list call gets 401). No **Create Product** button. |
+| UI‑02 | Login | Click **Login** → sign in as `testuser` | Keycloak page *"Sign in to your account"*, then back to the app: header **"Hi testuser"** + **Logout**, **"Products (N)"**, **Create Product** button. ⚠ In light mode "Hi testuser" is invisible (white on white). |
+| UI‑03 | Order without quantity | Leave **Quantity** empty → **Order Now** | Red **"Order Failed, please try again later"** + **"Quantity cannot be null"**. No request is sent. |
+| UI‑04 | Successful order | Quantity `1` on an **iPhone 15** row → **Order Now** | Green **"Order Placed Successfully"**; Network: `POST /api/order → 201`. The quantity field isn't cleared. |
+| UI‑05 | Out of stock (fresh page) | **Reload**, quantity `1000` → **Order Now** | Red **"Order Failed, please try again later"**; Network: `POST /api/order → 500`. |
+| UI‑06 | Out of stock after a success ⚠ | Do UI‑04, then (no reload) quantity `1000` → **Order Now** | Network shows `500`, but the page **still says "Order Placed Successfully"** (UI‑2). |
+| UI‑07 | Add product: required fields | **Create Product**, click into **SKU Code**, then click another field without typing | **"SKU Code is required."**; **Add Product** is disabled. |
+| UI‑08 | Add product: weak validation ⚠ | Enter SKU `ab`, Name `x`, Description `short`, keep Price `0` | **Add Product is enabled**, no messages. The template's "at least 3/10 characters" and "greater than 0" messages never appear (UI‑5). Don't submit, or you'll add a junk product. |
+| UI‑09 | Add product: success | SKU `oneplus_12`, Name `OnePlus 12`, any description, Price `799` → **Add Product** | Green **"Product Created Successfully"**, form cleared; Network: `POST /api/product → 201`. You stay on `/add-product`; go back by clicking the **"Spring Boot Microservices Shop"** title (full reload). |
+| UI‑10 | Order the new product | On the list, **OnePlus 12** (last row), quantity `2` → **Order Now** | `POST /api/order → 201`. The message appears **at the top of the list**, so scroll up to see it. Use a seeded SKU (iphone_15, pixel_8, galaxy_24, oneplus_12); any other SKU has no stock, so ordering it fails. |
+| UI‑11 | Session expiry ⚠ | Stay logged in about 5 minutes (token lifetime), then look at the header | Header switches back to **Login** on its own; Console: *"silent renew failed!"* (UI‑3). The old product list stays on screen. |
+| UI‑12 | Order after silent logout ⚠ | After UI‑11, quantity `1` → **Order Now** | **Nothing happens**: no request, no message (stale message stays). Console: `TypeError: Cannot read properties of null (reading 'email')`. Reload and log in again. |
+| UI‑13 | Logout | Log in, then **Logout** | Back to **"Products (0)"**, header **Login**. Clicking **Login** again shows the Keycloak sign-in form, so the Keycloak session really ended. (Without logging out, **Login** goes straight back in without a password: single sign-on.) |
+| UI‑14 | Add product while logged out ⚠ | Logged out, open http://localhost:4200/add-product directly, fill all fields → **Add Product** | The page opens (no route guard). Submit sends `POST /api/product → 401`, and the page shows **no message**; the form stays filled. The gateway still protects the data. |
+| UI‑15 | Narrow window ⚠ | Make the window narrower than 768 px | **Login/Logout** disappear and a ☰ button appears that does nothing (UI‑1). |
+
+### 6.4 Clean-up
+
+UI‑09 creates a product, and UI‑04/05/10 create orders. There are no delete endpoints. To reset, see §8 (Data).
+
+### 6.5 UI bugs found
+
+| ID | Bug | Where | Suggested fix |
+|---|---|---|---|
+| UI‑1 | Header menu button has no handler; below 768 px the Login/Logout links can't be reached | `header.component.html` | toggle the `#mobile-menu` visibility on click (or always show the auth link) |
+| UI‑2 | `orderSuccess` / `orderFailed` are never reset, so a success message sticks over later failures | `home-page.component.ts` `orderProduct()` | reset all three flags at the start of every order |
+| UI‑3 | **Silent token renewal fails** ("authCallback incorrect nonce … token(s) validation failed"), so the user is logged out about 4.5 min after login | `auth.config.ts` | add `ignoreNonceAfterRefresh: true` (Keycloak keeps the original nonce in refreshed ID tokens) |
+| UI‑4 | Every **Order Now** click subscribes to `userData$` and never unsubscribes. Old subscriptions re-run on every user-data change (seen as the `null … email` errors on logout); if user data is refreshed instead of cleared, earlier clicks' orders could be sent again | `home-page.component.ts` `orderProduct()` | use `userData$.pipe(take(1))` |
+| UI‑5 | Validation messages for min length and price > 0 never trigger; only `required` validators exist (price 0 accepted) | `add-product.component.ts` | add `Validators.minLength(...)` / `Validators.min(0.01)` to match the template |
+| UI‑6 | Home page asks for products before login and shows a 401 as "No products found!" | `home-page.component.ts` `ngOnInit()` | load products only when authenticated (or handle the error) |
+| UI‑7 | Greeting "Hi {username}" is `text-white` on a white header in light mode | `header.component.html` | use `text-gray-900 dark:text-white` |
+| UI‑8 | `/add-product` has no route guard and failed saves show no error | `app.routes.ts`, `add-product.component.ts` | add an auth guard; show an error on failure |
+| UI‑9 | Success/failure messages render at the top of the list, out of view when ordering lower rows; no "back" link from Add Product | `home-page` / `add-product` templates | show the message next to the row (or as a toast); add a back link |
+
+---
+
+## 7. Findings this test plan surfaced
+
+API and service findings (UI bugs are in §6.5):
 
 | Finding | Where | Suggested fix |
 |---|---|---|
@@ -196,7 +267,7 @@ What to learn from it:
 
 ---
 
-## 7. Notes & troubleshooting
+## 8. Notes & troubleshooting
 
 - **Data:** runs add products and orders to your local databases. There are no delete endpoints, and folder 5.1 adds a blank product that also shows up in the web app. To start fresh: `./launch.sh stop --all`, delete the data folders listed in [RUNNING.md](RUNNING.md) §0, then `./launch.sh`.
 - **401 everywhere:** the token expired (5 min). Run 0.1 again.
