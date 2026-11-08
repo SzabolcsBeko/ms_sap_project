@@ -175,7 +175,7 @@ preflight() {
     printf '      Free them (e.g. stop the container or process) and run again. Nothing was started.\n' >&2
     exit 1
   fi
-  ok "ports 8080, 8081, 8082, 9000 and 4200 are free"
+  ok "ports 8080, 8081, 8082, 9000 and 4200 are free or already used by this stack"
 }
 
 # ---------- start steps ----------
