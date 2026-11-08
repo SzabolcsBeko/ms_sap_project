@@ -1,0 +1,1422 @@
+{
+  "info": {
+    "_postman_id": "8d986af8-1a11-5e41-90a0-9df60182cea0",
+    "name": "Microservices Shop: API test plan",
+    "description": "Learn and check the flows of the microservices shop: Keycloak login, API gateway security, product catalog, inventory, order placement (order → inventory), known gaps, and resilience (circuit breakers, fallbacks).\n\nStart the stack with `./launch.sh`, then run folders 0–5 in order (automated). Folder 6 is manual. Full guide: `docs/TEST_PLAN.md`.\n\nFormat: Postman Collection v2.1. Also imports into Insomnia and Bruno.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "0. Setup & smoke",
+      "description": "Run this folder first. It logs in to Keycloak and stores the access token in the `accessToken` variable, which every other request sends as `Authorization: Bearer ...` (configured once at collection level).\n\nTokens live 5 minutes (realm setting). If requests start returning 401, run **Get access token** again.",
+      "item": [
+        {
+          "name": "Get access token (Keycloak password grant)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token",
+              "host": [
+                "{{keycloakUrl}}"
+              ],
+              "path": [
+                "realms",
+                "{{realm}}",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            },
+            "description": "Logs in as the realm's test user with the OAuth2 *password* grant (enabled on the `angular-client` client for testing). The browser app uses Authorization Code + PKCE instead, but both produce the same kind of JWT.\n\nThe test script saves the token into the `accessToken` collection variable.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{clientId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "{{username}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "{{password}}",
+                  "type": "text"
+                },
+                {
+                  "key": "scope",
+                  "value": "openid profile",
+                  "type": "text"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Returns a bearer access token', function () {",
+                  "  pm.expect(body.access_token).to.be.a('string');",
+                  "  pm.expect(body.token_type).to.eql('Bearer');",
+                  "  pm.expect(body.expires_in).to.be.above(0);",
+                  "});",
+                  "pm.collectionVariables.set('accessToken', body.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Gateway health (actuator, needs token)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/actuator/health",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "Spring Boot Actuator on the gateway. It is **not** in the gateway's public URL list, so it needs a valid token (without one you get 401). Shows the gateway's circuit breaker health indicators."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "pm.test('Gateway is UP', function () { pm.expect(pm.response.json().status).to.eql('UP'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aggregated API docs (public, no token)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/aggregate/product-service/v3/api-docs",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "aggregate",
+                "product-service",
+                "v3",
+                "api-docs"
+              ]
+            },
+            "description": "The gateway proxies each service's OpenAPI document under `/aggregate/**`, which is public (no token). This is what feeds the Swagger UI at `{{gatewayUrl}}/swagger-ui.html`.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "pm.test('Returns an OpenAPI document', function () {",
+                  "  pm.expect(pm.response.json().openapi).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Security (gateway edge)",
+      "description": "The API gateway is an OAuth2 resource server: it validates the JWT signature against Keycloak before routing. These requests show what happens when the token is missing, invalid, or cannot be obtained.",
+      "item": [
+        {
+          "name": "No token → 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/product",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "product"
+              ]
+            },
+            "description": "No `Authorization` header. The gateway rejects the call before it reaches product-service and answers with an empty body and a `WWW-Authenticate: Bearer` header.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () { pm.expect(pm.response.code).to.eql(401); });",
+                  "pm.test('Asks for a bearer token', function () {",
+                  "  pm.expect(pm.response.headers.get('WWW-Authenticate')).to.include('Bearer');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid token → 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/product",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "product"
+              ]
+            },
+            "description": "A syntactically JWT-shaped but fake token. Signature validation fails, so the gateway returns 401.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "abc.def.ghi",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () { pm.expect(pm.response.code).to.eql(401); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wrong password at Keycloak → 401",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token",
+              "host": [
+                "{{keycloakUrl}}"
+              ],
+              "path": [
+                "realms",
+                "{{realm}}",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            },
+            "description": "Keycloak refuses the login, so no token is issued at all.",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{clientId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "{{username}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "definitely-wrong",
+                  "type": "text"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () { pm.expect(pm.response.code).to.eql(401); });",
+                  "pm.test('Error is invalid_grant', function () {",
+                  "  pm.expect(pm.response.json().error).to.eql('invalid_grant');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Product catalog (product-service, MongoDB)",
+      "description": "Flow: client → gateway → product-service → MongoDB.\n\nNote: there is no delete endpoint, so every run adds a product to the catalog.",
+      "item": [
+        {
+          "name": "Create product",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/product",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "product"
+              ]
+            },
+            "description": "Creates a product whose SKU matches seeded inventory (`{{inStockSku}}`), so it can be ordered. MongoDB assigns the `id`; the test stores it in `createdProductId`.\n\nCreating a product does **not** create stock. Only the four seeded SKUs (iphone_15, pixel_8, galaxy_24, oneplus_12) are orderable.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"iPhone 15\",\n  \"description\": \"Apple smartphone, created by the API test plan\",\n  \"skuCode\": \"{{inStockSku}}\",\n  \"price\": 999.99\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.expect(pm.response.code).to.eql(201); });",
+                  "const p = pm.response.json();",
+                  "pm.test('Product has an id and the sent fields', function () {",
+                  "  pm.expect(p.id).to.be.a('string');",
+                  "  pm.expect(p.skuCode).to.eql(pm.collectionVariables.get('inStockSku'));",
+                  "  pm.expect(p.price).to.eql(999.99);",
+                  "});",
+                  "pm.collectionVariables.set('createdProductId', p.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/product",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "product"
+              ]
+            },
+            "description": "Returns every product. The test checks that the product created in the previous request is in the list."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const list = pm.response.json();",
+                  "pm.test('Response is an array', function () { pm.expect(list).to.be.an('array'); });",
+                  "pm.test('Contains the product created earlier', function () {",
+                  "  const id = pm.collectionVariables.get('createdProductId');",
+                  "  pm.expect(list.map(function (p) { return p.id; })).to.include(id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Malformed JSON → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/product",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "product"
+              ]
+            },
+            "description": "Broken JSON body. Spring cannot parse it and answers 400 Bad Request.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": ",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () { pm.expect(pm.response.code).to.eql(400); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Inventory (inventory-service, MySQL)",
+      "description": "Flow: client → gateway → inventory-service → MySQL.\n\nThe answer is a plain `true`/`false`: is there a row with this SKU and at least this quantity? Each seeded SKU has 100 units, and the number never changes (orders do not decrement it; see folder 5).",
+      "item": [
+        {
+          "name": "In stock (quantity 1)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/inventory?skuCode={{inStockSku}}&quantity=1",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "inventory"
+              ],
+              "query": [
+                {
+                  "key": "skuCode",
+                  "value": "{{inStockSku}}"
+                },
+                {
+                  "key": "quantity",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "1 unit of a seeded SKU is available."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "pm.test('In stock = true', function () {",
+                  "  pm.expect(pm.response.text().trim()).to.eql('true');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Boundary: exactly the stock (100)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/inventory?skuCode={{inStockSku}}&quantity=100",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "inventory"
+              ],
+              "query": [
+                {
+                  "key": "skuCode",
+                  "value": "{{inStockSku}}"
+                },
+                {
+                  "key": "quantity",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "The query is `quantity >= requested`, so asking for exactly 100 still returns true."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "pm.test('In stock = true', function () {",
+                  "  pm.expect(pm.response.text().trim()).to.eql('true');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Boundary: one more than stock (101)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/inventory?skuCode={{inStockSku}}&quantity=101",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "inventory"
+              ],
+              "query": [
+                {
+                  "key": "skuCode",
+                  "value": "{{inStockSku}}"
+                },
+                {
+                  "key": "quantity",
+                  "value": "101"
+                }
+              ]
+            },
+            "description": "101 exceeds the 100 seeded units."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "pm.test('In stock = false', function () {",
+                  "  pm.expect(pm.response.text().trim()).to.eql('false');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown SKU",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/inventory?skuCode=nokia_3310&quantity=1",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "inventory"
+              ],
+              "query": [
+                {
+                  "key": "skuCode",
+                  "value": "nokia_3310"
+                },
+                {
+                  "key": "quantity",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "No inventory row exists for this SKU."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "pm.test('In stock = false', function () {",
+                  "  pm.expect(pm.response.text().trim()).to.eql('false');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Missing quantity parameter → 400",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/inventory?skuCode={{inStockSku}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "inventory"
+              ],
+              "query": [
+                {
+                  "key": "skuCode",
+                  "value": "{{inStockSku}}"
+                }
+              ]
+            },
+            "description": "`quantity` is a required request parameter, so Spring rejects the call with 400."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () { pm.expect(pm.response.code).to.eql(400); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Order flow (order-service → inventory-service)",
+      "description": "Flow: client → gateway → order-service → **inventory-service** (REST call through Resilience4j circuit breaker + retry) → order saved in MySQL.\n\nThis is the only service-to-service call in the system.",
+      "item": [
+        {
+          "name": "Place order (in stock)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/order",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "order"
+              ]
+            },
+            "description": "order-service asks inventory-service whether 1 unit is in stock, gets `true`, and saves the order with a random UUID order number. The response is plain text.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"skuCode\": \"{{inStockSku}}\",\n  \"price\": 999.99,\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.expect(pm.response.code).to.eql(201); });",
+                  "pm.test('Order accepted', function () {",
+                  "  pm.expect(pm.response.text()).to.eql('Order Placed Successfully');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Place order (out of stock) → 500",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/order",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "order"
+              ]
+            },
+            "description": "inventory-service answers `false`, and order-service throws a RuntimeException. Current behaviour is a generic **500**, not a 4xx like 409 or 422. Nothing is saved.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"skuCode\": \"{{inStockSku}}\",\n  \"price\": 999.99,\n  \"quantity\": 1000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 500', function () { pm.expect(pm.response.code).to.eql(500); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Place order (unknown SKU) → 500",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/order",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "order"
+              ]
+            },
+            "description": "Same as out of stock: no inventory row, so `false`, so 500.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"skuCode\": \"nokia_3310\",\n  \"price\": 10,\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 500', function () { pm.expect(pm.response.code).to.eql(500); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Place order as the web app sends it (with userDetails)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/order",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "order"
+              ]
+            },
+            "description": "The Angular app also sends `userDetails` (email, first/last name). order-service ignores unknown fields, so the order succeeds, but the customer details are **not stored** anywhere.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"skuCode\": \"galaxy_24\",\n  \"price\": 899,\n  \"quantity\": 1,\n  \"userDetails\": {\n    \"email\": \"testuser@example.com\",\n    \"firstName\": \"Test\",\n    \"lastName\": \"User\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.expect(pm.response.code).to.eql(201); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Circuit breaker state (order-service actuator)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{orderServiceUrl}}/actuator/circuitbreakers",
+              "host": [
+                "{{orderServiceUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "circuitbreakers"
+              ]
+            },
+            "description": "Called directly on order-service (port 8081), not through the gateway. Shows the `inventory` circuit breaker that wraps the call to inventory-service. Normally `CLOSED`. Folder 6 shows how to make it open.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const cb = pm.response.json().circuitBreakers.inventory;",
+                  "pm.test('Inventory circuit breaker is CLOSED', function () { pm.expect(cb.state).to.eql('CLOSED'); });",
+                  "pm.test('Failure threshold is 50%', function () { pm.expect(cb.failureRateThreshold).to.eql('50.0%'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Known gaps (documents current behaviour)",
+      "description": "These tests **pass** because they assert how the system behaves today, and each one shows a weakness worth fixing. When a gap is fixed, the matching test will fail and should be updated to the new expected behaviour.",
+      "item": [
+        {
+          "name": "Empty product is accepted (no validation)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/product",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "product"
+              ]
+            },
+            "description": "An empty JSON object creates a product with every field `null`. There is no bean validation (`@Valid`, `@NotBlank`, ...). Note: this adds a blank product to the catalog, which also shows up in the web app.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.expect(pm.response.code).to.eql(201); });",
+                  "pm.test('Saved with null fields', function () {",
+                  "  const p = pm.response.json();",
+                  "  pm.expect(p.id).to.be.a('string');",
+                  "  pm.expect(p.name).to.eql(null);",
+                  "  pm.expect(p.skuCode).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overselling, step 1: order all 100 units",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/order",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "order"
+              ]
+            },
+            "description": "Orders the entire stock of pixel_8 (100 units).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"skuCode\": \"pixel_8\",\n  \"price\": 699,\n  \"quantity\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.expect(pm.response.code).to.eql(201); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overselling, step 2: order 100 again (still accepted)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/order",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "order"
+              ]
+            },
+            "description": "Orders 100 more. Because placing an order never decrements inventory, this is accepted too, so 200 units have been sold out of 100.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"skuCode\": \"pixel_8\",\n  \"price\": 699,\n  \"quantity\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.expect(pm.response.code).to.eql(201); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overselling, step 3: stock still reports 100",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/inventory?skuCode=pixel_8&quantity=100",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "inventory"
+              ],
+              "query": [
+                {
+                  "key": "skuCode",
+                  "value": "pixel_8"
+                },
+                {
+                  "key": "quantity",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "Inventory still says 100 units are available after selling 200."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "pm.test('Stock was never decremented', function () {",
+                  "  pm.expect(pm.response.text().trim()).to.eql('true');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Direct call to product-service without token (bypasses gateway)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{productServiceUrl}}/api/product",
+              "host": [
+                "{{productServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "product"
+              ]
+            },
+            "description": "Security lives only at the gateway. Calling product-service on its own port works **without any token**. In production the services must only be reachable through the gateway (private network), or validate JWTs themselves.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "pm.test('Data returned without authentication', function () {",
+                  "  pm.expect(pm.response.json()).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Direct call to inventory-service without token (bypasses gateway)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inventoryServiceUrl}}/api/inventory?skuCode={{inStockSku}}&quantity=1",
+              "host": [
+                "{{inventoryServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "inventory"
+              ],
+              "query": [
+                {
+                  "key": "skuCode",
+                  "value": "{{inStockSku}}"
+                },
+                {
+                  "key": "quantity",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Same gap on inventory-service (port 8082).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.expect(pm.response.code).to.eql(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get product by id is not implemented → 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/product/{{createdProductId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "product",
+                "{{createdProductId}}"
+              ]
+            },
+            "description": "product-service only has list and create. There is no `GET /api/product/{id}`."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () { pm.expect(pm.response.code).to.eql(404); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Resilience (manual: stop a service first)",
+      "description": "**Manual folder. Do not include it in automated runs.** Each request expects a service to be stopped first. Run the steps one by one.\n\nStop a single service (kills the JVM listening on its port):\n\n    lsof -ti tcp:8082 -sTCP:LISTEN | xargs kill     # inventory-service\n    lsof -ti tcp:8080 -sTCP:LISTEN | xargs kill     # product-service\n\nBring everything back (only missing components are started):\n\n    ./launch.sh\n\nSteps:\n1. Stop inventory-service, run **6.1** five or more times, then **6.2**: the circuit breaker is OPEN.\n2. Stop product-service and run **6.3** (gateway answers 503) and **6.4** (public route answers 401, a known gap).\n3. Run `./launch.sh`, wait 5 s, run folder 4 → *Place order (in stock)* 3 times, then **6.5**: the breaker moves OPEN → HALF_OPEN → CLOSED.\n\nCircuit breaker settings (order-service): count-based window of 5 calls, opens at 50% failures (minimum 5 calls), stays open 5 s, then allows 3 trial calls in HALF_OPEN.",
+      "item": [
+        {
+          "name": "6.1 [inventory down] Place order → fast 500 via fallback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/order",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "order"
+              ]
+            },
+            "description": "inventory-service is stopped. The InventoryClient call fails, the `@CircuitBreaker` fallback returns `false` (\"not in stock\"), and order-service answers 500. Because the fallback swallows the error, `@Retry` does not retry, so the answer comes back in milliseconds instead of hanging. order-service logs `Cannot get inventory for skuCode ...`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"skuCode\": \"{{inStockSku}}\",\n  \"price\": 999.99,\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 500', function () { pm.expect(pm.response.code).to.eql(500); });",
+                  "pm.test('Fails fast (under 2 s)', function () { pm.expect(pm.response.responseTime).to.be.below(2000); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6.2 [inventory down] Circuit breaker is OPEN",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{orderServiceUrl}}/actuator/circuitbreakers",
+              "host": [
+                "{{orderServiceUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "circuitbreakers"
+              ]
+            },
+            "description": "After at least 5 failed calls with 50%+ failures, the breaker opens and further calls are rejected without even trying inventory-service (`notPermittedCalls` grows).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const cb = pm.response.json().circuitBreakers.inventory;",
+                  "pm.test('Inventory circuit breaker is OPEN', function () { pm.expect(cb.state).to.eql('OPEN'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6.3 [product down] Gateway fallback → 503",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/product",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "product"
+              ]
+            },
+            "description": "product-service is stopped. The gateway's circuit breaker on the product route forwards to `/fallbackRoute`, which answers 503 with a friendly message instead of a connection error."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 503', function () { pm.expect(pm.response.code).to.eql(503); });",
+                  "pm.test('Fallback message', function () {",
+                  "  pm.expect(pm.response.text()).to.eql('Service Unavailable, please try again later');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6.4 [product down] Public API docs → 401 instead of 503 (gap)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/aggregate/product-service/v3/api-docs",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "aggregate",
+                "product-service",
+                "v3",
+                "api-docs"
+              ]
+            },
+            "description": "Same outage, but on a **public** route and without a token. The circuit breaker forwards to `/fallbackRoute`, and that path is not in the gateway's public URL list (`SecurityConfig`), so Spring Security rejects the forwarded request: an anonymous caller gets **401** instead of 503. Fix: permit `/fallbackRoute` in `SecurityConfig`. When fixed, this test should expect 503.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () { pm.expect(pm.response.code).to.eql(401); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6.5 [after restart] Circuit breaker recovers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{orderServiceUrl}}/actuator/circuitbreakers",
+              "host": [
+                "{{orderServiceUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "circuitbreakers"
+              ]
+            },
+            "description": "After `./launch.sh` restarts inventory-service and 5 s have passed, the breaker goes HALF_OPEN; 3 successful orders close it again. Run folder 4 → *Place order (in stock)* 3 times, then this request.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const cb = pm.response.json().circuitBreakers.inventory;",
+                  "pm.test('Inventory circuit breaker is CLOSED again', function () { pm.expect(cb.state).to.eql('CLOSED'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "gatewayUrl",
+      "value": "http://localhost:9000"
+    },
+    {
+      "key": "keycloakUrl",
+      "value": "http://localhost:8181"
+    },
+    {
+      "key": "realm",
+      "value": "spring-microservices-security-realm"
+    },
+    {
+      "key": "clientId",
+      "value": "angular-client"
+    },
+    {
+      "key": "username",
+      "value": "testuser"
+    },
+    {
+      "key": "password",
+      "value": "test1234"
+    },
+    {
+      "key": "productServiceUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "orderServiceUrl",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "inventoryServiceUrl",
+      "value": "http://localhost:8082"
+    },
+    {
+      "key": "inStockSku",
+      "value": "iphone_15"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "createdProductId",
+      "value": ""
+    }
+  ]
+}
