@@ -197,7 +197,7 @@
                 "exec": [
                   "pm.test('Status is 401', function () { pm.expect(pm.response.code).to.eql(401); });",
                   "pm.test('Asks for a bearer token', function () {",
-                  "  pm.expect(pm.response.headers.get('WWW-Authenticate')).to.include('Bearer');",
+                  "  pm.expect(pm.response.headers.get('www-authenticate')).to.include('Bearer');",
                   "});"
                 ]
               }

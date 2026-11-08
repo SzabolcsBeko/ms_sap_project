@@ -13,7 +13,8 @@ get {
 script:post-response {
   test('Status is 401', function () { expect(res.getStatus()).to.eql(401); });
   test('Asks for a bearer token', function () {
-    expect(res.getHeader('WWW-Authenticate')).to.include('Bearer');
+    // lower-case name: Bruno CLI looks headers up case-sensitively, and HTTP clients store them lower-cased
+    expect(res.getHeader('www-authenticate')).to.include('Bearer');
   });
 }
 

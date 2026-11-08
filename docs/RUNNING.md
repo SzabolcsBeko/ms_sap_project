@@ -286,7 +286,7 @@ cd api-gateway && docker compose down && cd ..
 | Login redirect fails / CORS error | `angular-client` redirect URIs / web origins not set to `http://localhost:4200`. |
 | order fails: *"not in stock"* | SKU has no inventory row, or quantity exceeds stock. Seed via `V2__add_inventory.sql` SKUs or add rows. |
 | Service won't start: table missing | Flyway didn't run — ensure the PostgreSQL container is up first and the DB exists (`order_service` / `inventory_service`). |
-| Service tests fail with *"Could not find a valid Docker environment"* (400 from Docker) | Docker Engine 29+ rejects the old API version Testcontainers 1.21 asks for. order-service and inventory-service pin `api.version=1.44` in `src/test/resources/docker-java.properties`; copy that file into any other service whose Testcontainers tests hit this. |
+| Service tests fail with *"Could not find a valid Docker environment"* (400 from Docker) | Docker Engine 29+ rejects the old API version Testcontainers 1.21 asks for. order-service, inventory-service and product-service pin `api.version=1.44` in `src/test/resources/docker-java.properties`; copy that file into any new service that uses Testcontainers. |
 | `order-service` 500 on order | `inventory-service` is down → circuit breaker fallback returns `false`. Start inventory first. |
 | Port already in use | Another process on 8080/8081/8082/9000/8181/4200 — stop it or change the port. |
 | `./mvnw: not found` (order/inventory) | Those two lack the wrapper — use `mvn`, or add it with `mvn -N wrapper:wrapper`. |

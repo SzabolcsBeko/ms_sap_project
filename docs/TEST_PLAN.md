@@ -25,7 +25,7 @@ The scripts deliberately use a small, common subset of the Postman API that all 
 - Bruno deliberately does **not** translate `pm.collectionVariables.set`. Values the scripts store (`accessToken`, `createdProductId`) therefore live in the **environment**, via `pm.environment.set`, which becomes `bru.setEnvVar` in Bruno.
 - Bruno turns `pm.response.text()` into `JSON.stringify(res.getBody())`, which wraps plain-text bodies in quotes. So plain-text checks use `to.include(...)` instead of an exact match.
 
-> **How it was verified:** every request and assertion was run against the live stack: folders 0–5 pass **44/44** in both the Postman JSON and the native Bruno files, and folder 6 was checked with the services stopped. After the move of order-service and inventory-service to PostgreSQL 16, folders 0–5 were re-run with newman: **44/44** pass. If a script doesn't convert in your tool version, the requests still work; you just check the result by eye.
+> **How it was verified:** every request and assertion was run against the live stack: folders 0–5 pass **44/44** in both the Postman JSON and the native Bruno files, and folder 6 was checked with the services stopped. After the move of order-service and inventory-service to PostgreSQL 16, everything was re-run: folders 0–5 pass **44/44** with newman and **26/26 requests** with Bruno CLI 2, and folder 6 passes following §5 (breaker `OPEN → HALF_OPEN → CLOSED`). If a script doesn't convert in your tool version, the requests still work; you just check the result by eye.
 
 ---
 
@@ -79,7 +79,7 @@ Bruno edits these `.bru` files in place, so changes you make in Bruno show up in
 
 ### Command line (optional)
 - **Postman/newman:** `npx newman run api-tests/microservices-shop.postman_collection.json -e api-tests/local.postman_environment.json --folder "0. Setup & smoke" --folder "1. Security (gateway edge)" ...` (one `--folder` per folder 0–5).
-- **Bruno CLI:** `cd api-tests/bruno && bru run "0. Setup & smoke" --env "Microservices Shop: local"` (repeat per folder 0–5; requires `npm i -g @usebruno/cli`).
+- **Bruno CLI:** `cd api-tests/bruno && bru run "0. Setup & smoke" "1. Security (gateway edge)" "2. Product catalog (product-service, MongoDB)" "3. Inventory (inventory-service, PostgreSQL)" "4. Order flow (order-service → inventory-service)" "5. Known gaps (documents current behaviour)" --env "Microservices Shop- local"` (requires `npm i -g @usebruno/cli`, or prefix with `npx -y @usebruno/cli@2`). Run all folders in **one** call so the token from folder 0 reaches the others. `--env` takes the environment's **file name** (`environments/Microservices Shop- local.bru`, where Bruno replaced the `:`), not its display name.
 
 > **Keeping the formats in sync:** the Postman JSON is the source and `api-tests/bruno/` is generated from it. If you change the JSON, re-create the Bruno folder (Import it into Bruno at that location, replacing the old folder), or make the same change in both.
 
