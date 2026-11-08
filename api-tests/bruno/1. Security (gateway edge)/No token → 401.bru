@@ -1,0 +1,26 @@
+meta {
+  name: No token → 401
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{gatewayUrl}}/api/product
+  body: none
+  auth: none
+}
+
+script:post-response {
+  test('Status is 401', function () { expect(res.getStatus()).to.eql(401); });
+  test('Asks for a bearer token', function () {
+    expect(res.getHeader('WWW-Authenticate')).to.include('Bearer');
+  });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  No `Authorization` header. The gateway rejects the call before it reaches product-service and answers with an empty body and a `WWW-Authenticate: Bearer` header.
+}

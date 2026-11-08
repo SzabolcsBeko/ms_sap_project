@@ -1,0 +1,27 @@
+meta {
+  name: Missing quantity parameter → 400
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{gatewayUrl}}/api/inventory?skuCode={{inStockSku}}
+  body: none
+  auth: inherit
+}
+
+params:query {
+  skuCode: {{inStockSku}}
+}
+
+script:post-response {
+  test('Status is 400', function () { expect(res.getStatus()).to.eql(400); });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  `quantity` is a required request parameter, so Spring rejects the call with 400.
+}

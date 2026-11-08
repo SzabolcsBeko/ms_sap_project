@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "Microservices Shop: API test plan",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

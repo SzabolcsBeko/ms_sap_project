@@ -1,0 +1,31 @@
+meta {
+  name: In stock (quantity 1)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{gatewayUrl}}/api/inventory?skuCode={{inStockSku}}&quantity=1
+  body: none
+  auth: inherit
+}
+
+params:query {
+  skuCode: {{inStockSku}}
+  quantity: 1
+}
+
+script:post-response {
+  test('Status is 200', function () { expect(res.getStatus()).to.eql(200); });
+  test('In stock = true', function () {
+    expect(JSON.stringify(res.getBody()).trim()).to.eql('true');
+  });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  1 unit of a seeded SKU is available.
+}

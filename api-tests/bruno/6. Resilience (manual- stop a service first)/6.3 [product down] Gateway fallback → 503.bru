@@ -1,0 +1,26 @@
+meta {
+  name: 6.3 [product down] Gateway fallback → 503
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{gatewayUrl}}/api/product
+  body: none
+  auth: inherit
+}
+
+script:post-response {
+  test('Status is 503', function () { expect(res.getStatus()).to.eql(503); });
+  test('Fallback message', function () {
+    expect(JSON.stringify(res.getBody())).to.include('Service Unavailable, please try again later');
+  });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  product-service is stopped. The gateway's circuit breaker on the product route forwards to `/fallbackRoute`, which answers 503 with a friendly message instead of a connection error.
+}

@@ -1,0 +1,15 @@
+# launch.sh runtime files (logs, PIDs)
+.run/
+
+# Docker bind-mounted database data (created by docker compose, never commit)
+product-service/data/
+order-service/mysql/
+inventory-service/docker/mysql/data/
+api-gateway/volume-data/
+
+# Build output (order-service, inventory-service and frontend have no .gitignore of their own)
+target/
+node_modules/
+frontend/.angular/
+frontend/coverage/
+.idea

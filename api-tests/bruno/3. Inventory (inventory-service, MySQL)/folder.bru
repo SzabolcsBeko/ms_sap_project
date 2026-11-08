@@ -1,0 +1,14 @@
+meta {
+  name: 3. Inventory (inventory-service, MySQL)
+  seq: 4
+}
+
+auth {
+  mode: inherit
+}
+
+docs {
+  Flow: client → gateway → inventory-service → MySQL.
+  
+  The answer is a plain `true`/`false`: is there a row with this SKU and at least this quantity? Each seeded SKU has 100 units, and the number never changes (orders do not decrement it; see folder 5).
+}

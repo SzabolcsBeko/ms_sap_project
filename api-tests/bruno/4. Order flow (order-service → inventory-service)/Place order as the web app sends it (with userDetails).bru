@@ -1,0 +1,40 @@
+meta {
+  name: Place order as the web app sends it (with userDetails)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{gatewayUrl}}/api/order
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "skuCode": "galaxy_24",
+    "price": 899,
+    "quantity": 1,
+    "userDetails": {
+      "email": "testuser@example.com",
+      "firstName": "Test",
+      "lastName": "User"
+    }
+  }
+}
+
+script:post-response {
+  test('Status is 201', function () { expect(res.getStatus()).to.eql(201); });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  The Angular app also sends `userDetails` (email, first/last name). order-service ignores unknown fields, so the order succeeds, but the customer details are **not stored** anywhere.
+}

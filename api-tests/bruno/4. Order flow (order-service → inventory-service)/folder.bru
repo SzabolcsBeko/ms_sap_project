@@ -1,0 +1,14 @@
+meta {
+  name: 4. Order flow (order-service → inventory-service)
+  seq: 5
+}
+
+auth {
+  mode: inherit
+}
+
+docs {
+  Flow: client → gateway → order-service → **inventory-service** (REST call through Resilience4j circuit breaker + retry) → order saved in MySQL.
+  
+  This is the only service-to-service call in the system.
+}

@@ -1,0 +1,26 @@
+meta {
+  name: Circuit breaker state (order-service actuator)
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{orderServiceUrl}}/actuator/circuitbreakers
+  body: none
+  auth: none
+}
+
+script:post-response {
+  test('Status is 200', function () { expect(res.getStatus()).to.eql(200); });
+  const cb = res.getBody().circuitBreakers.inventory;
+  test('Inventory circuit breaker is CLOSED', function () { expect(cb.state).to.eql('CLOSED'); });
+  test('Failure threshold is 50%', function () { expect(cb.failureRateThreshold).to.eql('50.0%'); });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Called directly on order-service (port 8081), not through the gateway. Shows the `inventory` circuit breaker that wraps the call to inventory-service. Normally `CLOSED`. Folder 6 shows how to make it open.
+}

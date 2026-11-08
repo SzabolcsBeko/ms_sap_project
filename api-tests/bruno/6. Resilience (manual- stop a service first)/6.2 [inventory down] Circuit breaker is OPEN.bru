@@ -1,0 +1,25 @@
+meta {
+  name: 6.2 [inventory down] Circuit breaker is OPEN
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{orderServiceUrl}}/actuator/circuitbreakers
+  body: none
+  auth: none
+}
+
+script:post-response {
+  test('Status is 200', function () { expect(res.getStatus()).to.eql(200); });
+  const cb = res.getBody().circuitBreakers.inventory;
+  test('Inventory circuit breaker is OPEN', function () { expect(cb.state).to.eql('OPEN'); });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  After at least 5 failed calls with 50%+ failures, the breaker opens and further calls are rejected without even trying inventory-service (`notPermittedCalls` grows).
+}

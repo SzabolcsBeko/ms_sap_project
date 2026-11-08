@@ -1,0 +1,28 @@
+meta {
+  name: 6. Resilience (manual: stop a service first)
+  seq: 7
+}
+
+auth {
+  mode: inherit
+}
+
+docs {
+  **Manual folder. Do not include it in automated runs.** Each request expects a service to be stopped first. Run the steps one by one.
+  
+  Stop a single service (kills the JVM listening on its port):
+  
+      lsof -ti tcp:8082 -sTCP:LISTEN | xargs kill     # inventory-service
+      lsof -ti tcp:8080 -sTCP:LISTEN | xargs kill     # product-service
+  
+  Bring everything back (only missing components are started):
+  
+      ./launch.sh
+  
+  Steps:
+  1. Stop inventory-service, run **6.1** five or more times, then **6.2**: the circuit breaker is OPEN.
+  2. Stop product-service and run **6.3** (gateway answers 503) and **6.4** (public route answers 401, a known gap).
+  3. Run `./launch.sh`, wait 5 s, run folder 4 → *Place order (in stock)* 3 times, then **6.5**: the breaker moves OPEN → HALF_OPEN → CLOSED.
+  
+  Circuit breaker settings (order-service): count-based window of 5 calls, opens at 50% failures (minimum 5 calls), stays open 5 s, then allows 3 trial calls in HALF_OPEN.
+}

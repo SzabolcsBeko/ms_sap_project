@@ -1,0 +1,14 @@
+meta {
+  name: 2. Product catalog (product-service, MongoDB)
+  seq: 3
+}
+
+auth {
+  mode: inherit
+}
+
+docs {
+  Flow: client → gateway → product-service → MongoDB.
+  
+  Note: there is no delete endpoint, so every run adds a product to the catalog.
+}

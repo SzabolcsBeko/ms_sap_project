@@ -1,0 +1,37 @@
+meta {
+  name: Empty product is accepted (no validation)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{gatewayUrl}}/api/product
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {}
+}
+
+script:post-response {
+  test('Status is 201', function () { expect(res.getStatus()).to.eql(201); });
+  test('Saved with null fields', function () {
+    const p = res.getBody();
+    expect(p.id).to.be.a('string');
+    expect(p.name).to.eql(null);
+    expect(p.skuCode).to.eql(null);
+  });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  An empty JSON object creates a product with every field `null`. There is no bean validation (`@Valid`, `@NotBlank`, ...). Note: this adds a blank product to the catalog, which also shows up in the web app.
+}

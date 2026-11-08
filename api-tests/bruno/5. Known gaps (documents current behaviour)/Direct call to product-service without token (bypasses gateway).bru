@@ -1,0 +1,26 @@
+meta {
+  name: Direct call to product-service without token (bypasses gateway)
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{productServiceUrl}}/api/product
+  body: none
+  auth: none
+}
+
+script:post-response {
+  test('Status is 200', function () { expect(res.getStatus()).to.eql(200); });
+  test('Data returned without authentication', function () {
+    expect(res.getBody()).to.be.an('array');
+  });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Security lives only at the gateway. Calling product-service on its own port works **without any token**. In production the services must only be reachable through the gateway (private network), or validate JWTs themselves.
+}
