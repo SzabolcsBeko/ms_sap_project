@@ -9,7 +9,7 @@
 
 | File | Purpose | Use it with |
 |---|---|---|
-| [`api-tests/microservices-shop.postman_collection.json`](../api-tests/microservices-shop.postman_collection.json) | 31 requests in 7 folders, each with a description and test assertions | Postman, Insomnia (Bruno: via Import) |
+| [`api-tests/microservices-shop.postman_collection.json`](../api-tests/microservices-shop.postman_collection.json) | 32 requests in 7 folders, each with a description and test assertions | Postman, Insomnia (Bruno: via Import) |
 | [`api-tests/local.postman_environment.json`](../api-tests/local.postman_environment.json) | Connection settings for the local stack (URLs, realm, client, test user) | Postman, Insomnia (Bruno: via Import) |
 | [`api-tests/bruno/`](../api-tests/bruno/) | The same collection as a **native Bruno collection** (`.bru` files), environment included | Bruno: **Open Collection** |
 
@@ -17,15 +17,15 @@
 
 | Tool | How to load it | Test scripts | Verified |
 |---|---|---|---|
-| **Postman** | Import the two JSON files | native | 44/44 assertions with a Postman-semantics runner (Postman app not installed here) |
-| **Bruno** | **Open Collection** → `api-tests/bruno` (or Import the JSON) | translated to Bruno's `bru`/`res` API | **Bruno 3.4.2's own converter and parser**; the `.bru` files pass 44/44 against the live stack |
+| **Postman** | Import the two JSON files | native | 46/46 assertions with newman (Postman app not installed here) |
+| **Bruno** | **Open Collection** → `api-tests/bruno` (or Import the JSON) | translated to Bruno's `bru`/`res` API | **Bruno 3.4.2's own converter and parser**; the `.bru` files pass 46/46 against the live stack |
 | **Insomnia** (v9+) | Import the two JSON files | mapped to Insomnia's after-response scripts | **not verified** (Insomnia not installed here) |
 
 The scripts deliberately use a small, common subset of the Postman API that all three can handle: `pm.test`, `pm.expect`, `pm.response.code/json()/text()/headers.get()/responseTime`, and **`pm.environment.get/set`**. Two Bruno details shaped this:
 - Bruno deliberately does **not** translate `pm.collectionVariables.set`. Values the scripts store (`accessToken`, `createdProductId`) therefore live in the **environment**, via `pm.environment.set`, which becomes `bru.setEnvVar` in Bruno.
 - Bruno turns `pm.response.text()` into `JSON.stringify(res.getBody())`, which wraps plain-text bodies in quotes. So plain-text checks use `to.include(...)` instead of an exact match.
 
-> **How it was verified:** every request and assertion was run against the live stack: folders 0–5 pass **44/44** in both the Postman JSON and the native Bruno files, and folder 6 was checked with the services stopped. After the move of order-service and inventory-service to PostgreSQL 16, everything was re-run: folders 0–5 pass **44/44** with newman and **26/26 requests** with Bruno CLI 2, and folder 6 passes following §5 (breaker `OPEN → HALF_OPEN → CLOSED`). If a script doesn't convert in your tool version, the requests still work; you just check the result by eye.
+> **How it was verified:** every request and assertion was run against the live stack: folders 0–5 pass **44/44** in both the Postman JSON and the native Bruno files, and folder 6 was checked with the services stopped. After the move of order-service and inventory-service to PostgreSQL 16, everything was re-run: folders 0–5 pass **44/44** with newman and **26/26 requests** with Bruno CLI 2, and folder 6 passes following §5 (breaker `OPEN → HALF_OPEN → CLOSED`). After product-service got input validation (2026‑11‑11), folders 0–5 pass **46/46** with newman and **27 requests / 46 checks** with Bruno CLI 2 (the two new `.bru` files, 2.4 and 2.5, follow the converter's format by hand). If a script doesn't convert in your tool version, the requests still work; you just check the result by eye.
 
 ---
 
@@ -109,6 +109,8 @@ Folders **0–5 are automated** (run in order, top to bottom). Folder **6 is man
 | 2.1 | Create product (SKU `{{inStockSku}}`) | 201, Mongo `id`, saved to `createdProductId` |
 | 2.2 | List products | 200, array that contains the new product |
 | 2.3 | Malformed JSON | 400 |
+| 2.4 | Create product with `{}` | 400 problem response, `errors` names `name`, `description`, `skuCode`, `price`; nothing saved |
+| 2.5 | Create product with price `0` (all else valid) | 400, `errors` = `{price: "price must be greater than 0"}` |
 
 ### 3. Inventory: gateway → inventory-service → PostgreSQL
 | # | Request | Expected |
@@ -131,7 +133,7 @@ Folders **0–5 are automated** (run in order, top to bottom). Folder **6 is man
 ### 5. Known gaps: tests that assert today's (weak) behaviour
 | # | Request | Expected today | What it shows |
 |---|---|---|---|
-| 5.1 | Create product with `{}` | 201, all fields `null` | no input validation |
+| ~~5.1~~ | ~~Create product with `{}`~~ | **fixed**: now 400, see 2.4 | input validation added to product-service |
 | 5.2–5.4 | Order 100 `pixel_8`, again 100, then check stock | 201, 201, still `true` for 100 | **overselling**: orders never decrement stock |
 | 5.5 | `GET :8080/api/product` with no token | 200 | services are reachable **around** the gateway, without auth |
 | 5.6 | `GET :8082/api/inventory` with no token | 200 | same, inventory-service |
@@ -261,7 +263,7 @@ API and service findings (UI bugs are in §6.5):
 |---|---|---|
 | Out of stock / unknown SKU returns **500** | order-service | throw a domain exception mapped to 409/422 with `@ControllerAdvice` |
 | **Overselling**: stock never decremented | order + inventory | reserve or decrement stock in the order flow (transactional or Saga) |
-| **No input validation**: empty product is saved | product-service | `@Valid` + `@NotBlank`/`@Positive` on `ProductRequest` |
+| ~~**No input validation**: empty product is saved~~ **Fixed** (2.4, 2.5) | product-service | `@Valid` + `@NotBlank`/`@Positive` on `ProductRequest`; 400 problem response listing each invalid field |
 | Services reachable **without auth** on their own ports | all services | keep them on a private network, or make each a resource server |
 | `userDetails` sent by the web app is **dropped** | order-service | add it to `OrderRequest`/`Order` (also needed for the planned Kafka notifications) |
 | Gateway fallback on a **public** route returns **401** instead of 503 | api-gateway `SecurityConfig` | add `/fallbackRoute` to the permitted URLs |
@@ -271,7 +273,7 @@ API and service findings (UI bugs are in §6.5):
 
 ## 8. Notes & troubleshooting
 
-- **Data:** runs add products and orders to your local databases. There are no delete endpoints, and folder 5.1 adds a blank product that also shows up in the web app. To start fresh: `./launch.sh stop --all`, delete the data folders listed in [RUNNING.md](RUNNING.md) §0, then `./launch.sh`.
+- **Data:** runs add products and orders to your local databases. There are no delete endpoints. Runs from before the product validation fix added blank products (no name or price) that show up in the web app as "- Price:"; remove them with `docker exec mongodb mongosh -u root -p password --authenticationDatabase admin product-service --eval 'db.product.deleteMany({skuCode: null, name: null})'`. To start fresh: `./launch.sh stop --all`, delete the data folders listed in [RUNNING.md](RUNNING.md) §0, then `./launch.sh`.
 - **401 everywhere:** the token expired (5 min). Run 0.1 again.
 - **Connection refused:** the stack isn't running. Check with `./launch.sh status`.
 - **4.5 fails with `OPEN`/`HALF_OPEN`:** you ran folder 6 recently. Place 3 successful orders, or wait, and run it again.

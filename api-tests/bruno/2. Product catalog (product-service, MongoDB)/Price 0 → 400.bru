@@ -1,0 +1,40 @@
+meta {
+  name: Price 0 → 400
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{gatewayUrl}}/api/product
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "name": "Free phone",
+    "description": "Price must be greater than 0",
+    "skuCode": "{{inStockSku}}",
+    "price": 0
+  }
+}
+
+script:post-response {
+  test('Status is 400', function () { expect(res.getStatus()).to.eql(400); });
+  test('Only the price is reported', function () {
+    const p = res.getBody();
+    expect(p.errors).to.eql({ price: 'price must be greater than 0' });
+  });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  Every other field is valid, but the price is 0. Only `price` is reported, and nothing is saved.
+}
