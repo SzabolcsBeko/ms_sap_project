@@ -5,10 +5,10 @@ import {of} from 'rxjs';
 /**
  * Test double for OidcSecurityService, so unit tests don't need a real Keycloak.
  * Covers only the members the app uses (see app.component, header, home-page,
- * auth.interceptor). It represents a logged-in user by default.
- *
- * Note: the logged-out case (userData null) isn't the default, because the header
- * currently crashes on it ("reading 'preferred_username'"), a known separate bug.
+ * auth.interceptor). It represents a logged-in user by default; pass `false` for a
+ * logged-out user (userData is then null, as in the real library).
+ * Tests that need the login state to change later can replace isAuthenticated$ /
+ * userData$ with a Subject.
  */
 export function createOidcSecurityServiceStub(isAuthenticated = true) {
   const userData = isAuthenticated

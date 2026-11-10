@@ -1,7 +1,11 @@
 <div class="container mx-auto p-4">
+  <a routerLink="/" class="inline-block mb-2 text-blue-500 hover:underline">&larr; Back to products</a>
   <h2 class="text-2xl font-bold mb-4">Add Product</h2>
   @if (productCreated) {
-    <h4 class="text-green-500">Product Created Successfully</h4>
+    <h4 role="status" class="text-green-500">Product Created Successfully</h4>
+  }
+  @if (productCreateFailed) {
+    <h4 role="alert" class="text-red-500">Product could not be created, please try again later</h4>
   }
   <form [formGroup]="addProductForm" (ngSubmit)="onSubmit()">
     <div class="mb-4">
@@ -61,7 +65,7 @@
 
     <button
       type="submit"
-      class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+      class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-green-500"
       [disabled]="addProductForm.invalid"
     >
       Add Product
