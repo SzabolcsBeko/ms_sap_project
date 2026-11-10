@@ -444,6 +444,103 @@
               }
             }
           ]
+        },
+        {
+          "name": "Empty product → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/product",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "product"
+              ]
+            },
+            "description": "An empty JSON object is rejected by bean validation (`@Valid` on `ProductRequest`): `skuCode`, `name` and `description` must not be blank, and `price` must be greater than 0. The answer is a problem response (`application/problem+json`) whose `errors` object names each invalid field. Nothing is saved.\n\nBefore the fix this request returned 201 and saved a blank product (old known gap 5.1).",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () { pm.expect(pm.response.code).to.eql(400); });",
+                  "pm.test('Names every missing field', function () {",
+                  "  const p = pm.response.json();",
+                  "  pm.expect(p.title).to.eql('Invalid product');",
+                  "  pm.expect(p.errors).to.have.all.keys('name', 'description', 'skuCode', 'price');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Price 0 → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/product",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "product"
+              ]
+            },
+            "description": "Every other field is valid, but the price is 0. Only `price` is reported, and nothing is saved.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Free phone\",\n  \"description\": \"Price must be greater than 0\",\n  \"skuCode\": \"{{inStockSku}}\",\n  \"price\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () { pm.expect(pm.response.code).to.eql(400); });",
+                  "pm.test('Only the price is reported', function () {",
+                  "  const p = pm.response.json();",
+                  "  pm.expect(p.errors).to.eql({ price: 'price must be greater than 0' });",
+                  "});"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -886,56 +983,6 @@
       "name": "5. Known gaps (documents current behaviour)",
       "description": "These tests **pass** because they assert how the system behaves today, and each one shows a weakness worth fixing. When a gap is fixed, the matching test will fail and should be updated to the new expected behaviour.",
       "item": [
-        {
-          "name": "Empty product is accepted (no validation)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{gatewayUrl}}/api/product",
-              "host": [
-                "{{gatewayUrl}}"
-              ],
-              "path": [
-                "api",
-                "product"
-              ]
-            },
-            "description": "An empty JSON object creates a product with every field `null`. There is no bean validation (`@Valid`, `@NotBlank`, ...). Note: this adds a blank product to the catalog, which also shows up in the web app.",
-            "body": {
-              "mode": "raw",
-              "raw": "{}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 201', function () { pm.expect(pm.response.code).to.eql(201); });",
-                  "pm.test('Saved with null fields', function () {",
-                  "  const p = pm.response.json();",
-                  "  pm.expect(p.id).to.be.a('string');",
-                  "  pm.expect(p.name).to.eql(null);",
-                  "  pm.expect(p.skuCode).to.eql(null);",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
         {
           "name": "Overselling, step 1: order all 100 units",
           "request": {

@@ -400,6 +400,7 @@ sequenceDiagram
     FE->>GW: POST /api/product (Bearer JWT, ProductRequest)
     GW->>GW: Validate JWT + circuit breaker
     GW->>PS: forward POST /api/product
+    PS->>PS: validate ProductRequest with @Valid, 400 problem response if a field is invalid
     PS->>PS: build Product (Lombok builder)
     PS->>M: save(product)
     M-->>PS: id assigned
