@@ -1,10 +1,14 @@
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import { OidcSecurityService } from 'angular-auth-oidc-client';
 import { AppComponent } from './app.component';
+import { provideOidcSecurityServiceStub } from '../testing/oidc-security-service.stub';
 
 describe('AppComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AppComponent],
+      providers: [provideRouter([]), provideOidcSecurityServiceStub()],
     }).compileComponents();
   });
 
@@ -20,10 +24,19 @@ describe('AppComponent', () => {
     expect(app.title).toEqual('microservices-shop-frontend');
   });
 
-  it('should render title', () => {
+  // The app template is <app-header> + <router-outlet>; the CLI default test looked for an <h1> that never existed.
+  it('should render the header and the router outlet', () => {
     const fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('h1')?.textContent).toContain('Hello, microservices-shop-frontend');
+    expect(compiled.querySelector('app-header')).not.toBeNull();
+    expect(compiled.querySelector('router-outlet')).not.toBeNull();
+    expect(compiled.textContent).toContain('Spring Boot Microservices Shop');
+  });
+
+  it('should check the login state on start', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    fixture.detectChanges();
+    expect(TestBed.inject(OidcSecurityService).checkAuth).toHaveBeenCalled();
   });
 });
