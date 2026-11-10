@@ -1,6 +1,6 @@
 # Registration Function — Implementation Plan
 
-> **Trello card:** [Registration function](https://trello.com/c/CQHr7eED/2-registration-function) (SAP_MS board, *In progress*)
+> **Trello card:** [Registration function](https://trello.com/c/CQHr7eED/2-registration-function)
 > **Card text:** "Registration function add as different microservice, implementing the front-end functions too."
 > **Date:** 2026‑11‑08 • **Branch base:** `development`
 > **Related docs:** [ARCHITECTURE.md](ARCHITECTURE.md), [RUNNING.md](RUNNING.md), [TEST_PLAN.md](TEST_PLAN.md), [DATABASE_CLOUD_STRATEGY.md](DATABASE_CLOUD_STRATEGY.md), [CICD_PIPELINE.md](CICD_PIPELINE.md)
@@ -13,6 +13,8 @@ Let a new customer create an account from the Angular app and then log in with i
 
 1. A new **`user-service`** microservice that owns registration and the customer profile.
 2. A **Register page** in the Angular app, linked from the header.
+
+**Yes — this is a new, standalone microservice** (`user-service`), a sibling to `product-service`, `order-service` and `inventory-service`. It owns one bounded context (customer identity/profile), has its own database and port, and is wired into the API gateway like the others. It does **not** become its own identity provider — Keycloak stays the single source of credentials (see §2).
 
 ### Where we start
 
@@ -29,7 +31,7 @@ Let a new customer create an account from the Angular app and then log in with i
 
 ## 2. Key design decision: who owns users?
 
-Keycloak already stores identities and credentials, and the gateway trusts only Keycloak-issued JWTs. So **the user-service must create the user *in Keycloak***. It must not keep its own password store.
+Keycloak already stores identities and credentials, and the gateway trusts only Keycloak-issued JWTs. So **the user-service must create the user _in Keycloak_**. It must not keep its own password store.
 
 | Option | How it works | Verdict |
 |---|---|---|
@@ -64,9 +66,23 @@ flowchart TB
 | Component | Port | Notes |
 |---|---|---|
 | `user-service` | **8083** | Next free port after inventory-service (8082) |
-| PostgreSQL for user-service | **5433** on the host (5432 in the container) | Host port 5433 avoids clashing with a local Postgres. PostgreSQL 16 follows the decision record in DATABASE_CLOUD_STRATEGY.md §8, and a new service has no migration cost. |
+| PostgreSQL for user-service | **5433** on the host (5432 in the container) | Host port 5433 avoids clashing with a local Postgres and with order-service's Postgres (5434). PostgreSQL 16 follows the decision record in DATABASE_CLOUD_STRATEGY.md §8, and a new service has no migration cost. |
 
-### 3.2 Registration sequence
+### 3.2 Registration flow (step by step)
+
+1. Visitor fills the `/register` form; the SPA validates it (required, email, password rules, confirm match).
+2. SPA → gateway: `POST /api/user/register` with **no** Authorization header. The gateway lets this path through (permitAll) behind a circuit breaker.
+3. user-service runs Bean Validation (`@Valid`).
+4. user-service gets a service-account token from Keycloak (client_credentials, cached).
+5. user-service → Keycloak: `POST /admin/realms/{realm}/users` (username, email, names, password credential).
+   - **201 + Location** → INSERT `user_profile` row → **201** to the SPA → "Account created" + **Log in** button.
+     - If the DB insert fails → `DELETE /admin/realms/{realm}/users/{keycloakId}` (compensation) → **500**.
+   - **409** (username/email taken) → **409** `USERNAME_TAKEN` / `EMAIL_TAKEN`.
+   - **400** (password policy) → **400** `WEAK_PASSWORD`.
+   - Keycloak unreachable / timeout → **503**.
+6. Visitor clicks **Log in** → existing PKCE flow (`oidcSecurityService.authorize()`).
+
+### 3.3 Registration sequence
 
 ```mermaid
 sequenceDiagram
@@ -160,7 +176,7 @@ Returns the caller's profile, looked up by the JWT `sub` (= Keycloak user id). L
 
 ## 5. user-service — backend design
 
-Copy the structure and conventions of `order-service` (Spring Boot 3.5.3, Java 21, Lombok, springdoc 2.8.9, Flyway, Testcontainers, REST Assured).
+Copy the structure and conventions of `order-service` (Spring Boot 3.5.3, Java 21, Lombok, springdoc 2.8.9, Flyway, Testcontainers, REST Assured, Resilience4j). The order-service already demonstrates every building block we need: a `RestClient` + `HttpServiceProxyFactory` HTTP client, Resilience4j circuit breaker / retry / time limiter, PostgreSQL + Flyway, and WireMock-based integration tests.
 
 ### 5.1 Module layout
 
@@ -194,7 +210,8 @@ user-service/
     │   ├── repository/
     │   │   └── UserProfileRepository.java
     │   └── service/
-    │       └── RegistrationService.java   # orchestration + compensation
+    │       ├── RegistrationService.java       # interface (port) — orchestration contract
+    │       └── KeycloakRegistrationService.java # implementation: normalize, create, persist, compensate
     ├── main/resources/
     │   ├── application.properties
     │   └── db/migration/V1__init.sql
@@ -208,8 +225,8 @@ user-service/
 - `spring-boot-starter-oauth2-resource-server`: for `GET /api/user/me`, and so the service doesn't trust unauthenticated callers on its own port (TEST_PLAN.md §7 finding)
 - `org.postgresql:postgresql` (runtime), `org.flywaydb:flyway-core`, `org.flywaydb:flyway-database-postgresql`
 - `springdoc-openapi-starter-webmvc-ui` 2.8.9, Lombok
-- Resilience4j circuit breaker + time limiter on the Keycloak calls (same starter as order-service)
-- Test: `spring-boot-starter-test`, `spring-boot-testcontainers`, `org.testcontainers:postgresql`, `org.testcontainers:junit-jupiter`, `rest-assured`, and `com.github.dasniko:testcontainers-keycloak` (3.3.x line, for Keycloak 24)
+- Resilience4j circuit breaker + time limiter on the Keycloak calls (`spring-cloud-starter-circuitbreaker-resilience4j`, same starter as order-service)
+- Test: `spring-boot-starter-test`, `spring-boot-testcontainers`, `org.testcontainers:postgresql`, `org.testcontainers:junit-jupiter`, `rest-assured`, `spring-cloud-contract-wiremock`, and `com.github.dasniko:testcontainers-keycloak` (3.3.x line, for Keycloak 24)
 
 > **Why not `keycloak-admin-client`?** It pulls in RESTEasy/JAX-RS next to Spring MVC, and its version has to track the server. The service needs three endpoints (token, create user, delete user). A small `@HttpExchange` interface matches how order-service already calls inventory-service, and adds no new HTTP stack.
 
@@ -269,7 +286,7 @@ erDiagram
     }
 ```
 
-There is no password column. `keycloak_id` is the cross-system key, the same "logical link" pattern that `skuCode` uses between the other services.
+There is no password column. `keycloak_id` (= JWT `sub`) is the cross-system key, the same "logical link" pattern that `skuCode` uses between the other services.
 
 ### 5.6 `application.properties`
 
@@ -296,6 +313,16 @@ spring.security.oauth2.client.provider.keycloak.token-uri=${keycloak.base-url}/r
 # resource server (GET /api/user/me)
 spring.security.oauth2.resourceserver.jwt.issuer-uri=${keycloak.base-url}/realms/${keycloak.realm}
 
+# Resilience4j (instance: keycloak) — mirror order-service's "inventory" settings
+resilience4j.circuitbreaker.instances.keycloak.registerHealthIndicator=true
+resilience4j.circuitbreaker.instances.keycloak.slidingWindowType=COUNT_BASED
+resilience4j.circuitbreaker.instances.keycloak.slidingWindowSize=5
+resilience4j.circuitbreaker.instances.keycloak.failureRateThreshold=50
+resilience4j.circuitbreaker.instances.keycloak.waitDurationInOpenState=5s
+resilience4j.circuitbreaker.instances.keycloak.permittedNumberOfCallsInHalfOpenState=3
+resilience4j.circuitbreaker.instances.keycloak.minimum-number-of-calls=5
+resilience4j.timelimiter.instances.keycloak.timeout-duration=3s
+
 management.endpoints.web.exposure.include=health,info,circuitbreakers
 management.health.circuitbreakers.enabled=true
 ```
@@ -308,6 +335,36 @@ Secrets come from env vars with dev defaults. That's a small step toward ARCHITE
 - Return 409 for duplicates. This reveals that an account exists, which is normal for a shop sign-up, but write it down as an accepted risk.
 - The public endpoint can be abused (account spam). In this scope: rely on Keycloak's brute-force protection for logins (already on). Follow-up: a gateway rate limit (e.g. Bucket4j per IP) on `POST /api/user/register`.
 - The `user-service` Keycloak client gets **only** `manage-users`, `view-users` and `query-users` from `realm-management`. Never `realm-admin`.
+
+### 5.8 Design principles — SOLID, Clean Code, MVC
+
+This is the section the card asked to make explicit. The layering above is chosen so each principle has a concrete home, not just a label.
+
+**MVC / layered mapping.** The service follows the classic Spring layering, which is MVC applied to a REST backend:
+
+| MVC role | Component | Responsibility |
+|---|---|---|
+| **Controller** | `UserController` | HTTP only: bind + `@Valid` the request, call the service, map the result to a status code. No business logic, no Keycloak/DB calls. |
+| **Model** | `UserProfile` (entity), `RegistrationRequest`/`RegistrationResponse` (DTOs), `UserRepresentation` (Keycloak model) | Data + validation rules. DTOs are the API model and are kept separate from the JPA entity (the persistence model), so the HTTP contract and the DB schema can evolve independently. |
+| **"View"** | JSON serialization + `ProblemDetail` (RFC 7807) | The representation returned to the SPA. The Angular `RegisterComponent` is the real view. |
+| **Service / domain** | `RegistrationService` + `KeycloakRegistrationService` | Orchestration, normalization, the create→persist→compensate saga. |
+| **Infrastructure** | `KeycloakAdminClient`, `UserProfileRepository` | Talk to Keycloak and PostgreSQL. |
+
+**SOLID.**
+
+- **S — Single Responsibility.** Each class has one reason to change: the controller changes when the HTTP shape changes; `RegistrationService` when the registration workflow changes; `KeycloakAdminClient` when the Keycloak API changes; `GlobalExceptionHandler` when error mapping changes. Validation lives on the DTO, not scattered through the service.
+- **O — Open/Closed.** New endpoints (e.g. `GET /api/user/me`, later profile editing) are added as new methods/classes without touching registration. New error types are handled by adding an `@ExceptionHandler`, not by editing a switch.
+- **L — Liskov.** `RegistrationService` is an interface; `KeycloakRegistrationService` is one implementation. A test double or a future "self-registration" implementation can substitute for it without the controller noticing.
+- **I — Interface Segregation.** `KeycloakAdminClient` exposes only the two operations we use (`createUser`, `deleteUser`) instead of a fat admin client. `UserProfileRepository` exposes only the queries the service needs.
+- **D — Dependency Inversion.** The controller depends on the `RegistrationService` abstraction; the service depends on the `KeycloakAdminClient` and `UserProfileRepository` abstractions, not on `RestClient`/`EntityManager` concretes. Wiring happens in `config/` (`KeycloakClientConfig`, Spring Data), keeping the domain free of framework plumbing — exactly how order-service builds `InventoryClient` in `RestClientConfig`.
+
+**Clean Code.**
+
+- Intention-revealing names (`register`, `IdentityProviderUnavailableException`, `t_user_profile`), small single-purpose methods, and the §5.4 workflow reads top-to-bottom as numbered steps.
+- No secret ever hits a log or a `toString()`; failures carry a stable machine code (`USERNAME_TAKEN`, `WEAK_PASSWORD`) plus a human message, instead of leaking stack traces.
+- One source of truth for validation rules (§4.1), mirrored — not duplicated by hand — in the Angular form.
+- The compensation path (delete the Keycloak user if the DB write fails) is explicit and tested, so the "no orphan accounts" invariant is visible in code, not just hoped for.
+- DRY across services: we reuse order-service's proven RestClient + Resilience4j recipe rather than inventing a new HTTP/resilience stack.
 
 ---
 
@@ -382,6 +439,10 @@ Also change `fallbackRoute` from `.GET("/fallbackRoute", …)` to match **any me
 - **Logged-in users** who open `/register` see "You are already logged in" and no form. Use a guest-only check on `isAuthenticated$`, or a small `CanActivateFn` guest guard.
 - The auth interceptor adds no `Authorization` header when there is no token, so the anonymous call goes through unchanged.
 
+### 8.2 Frontend and MVC / Clean Code
+
+The Angular side keeps the same separation: the **component** (`RegisterComponent`) is the controller+view, the **`UserService`** is the only place that knows the HTTP endpoint (single responsibility, same role as `ProductService`), and the **model interfaces** type the request/response. The reusable `password-match.validator` and the guest guard are small, single-purpose units rather than logic inlined in the component — the frontend mirror of §5.8.
+
 ---
 
 ## 9. Testing
@@ -416,7 +477,7 @@ Add folder **`7. Registration (user-service, PostgreSQL, Keycloak)`** to `api-te
 | UI‑16 | Header logged out | **Register** link next to **Login** |
 | UI‑17 | Empty / invalid form | Field messages; submit disabled |
 | UI‑18 | Passwords don't match | "Passwords do not match"; submit disabled |
-| UI‑19 | Successful registration | `POST :9000/api/user/register → 201`, success message, **Log in** → Keycloak → back as "Hi <username>" |
+| UI‑19 | Successful registration | `POST :9000/api/user/register → 201`, success message, **Log in** → Keycloak → back as "Hi \<username>" |
 | UI‑20 | Duplicate username / email | Error under the matching field; form keeps its values (except the password fields) |
 | UI‑21 | user-service stopped | "temporarily unavailable" message, **503** from the gateway (needs the fallback fix in §7) |
 | UI‑22 | Open `/register` while logged in | "already logged in", no form |
@@ -428,8 +489,8 @@ Add folder **`7. Registration (user-service, PostgreSQL, Keycloak)`** to `api-te
 
 - **`launch.sh`:** add `user-service:8083` to `BACKEND_SERVICES` (before `api-gateway`) and `user-service` to `COMPOSE_DIRS`. Add a `user_db_ready()` check (`docker exec user-service-postgres pg_isready -U postgres`) and a wait step. Update the step numbers (6 → 7), the preflight ports message, and the `status` container filter.
 - **`.gitignore`:** ignore `user-service/postgres-data/` (or whatever the compose volume path is).
-- **ARCHITECTURE.md:** add user-service to the §1 table, the §3 diagram and port map, the §5 ER diagrams, the §6 class diagram, and a new §7.4 "Register user" sequence (copy §3.2 above). Update §12 layout.
-- **RUNNING.md:** new service step, port map row, the Keycloak re-import note (§6 above), smoke-test curl for registration.
+- **ARCHITECTURE.md:** add user-service to the §1 table, the §3 diagram and port map, the §5 ER diagrams, the §6 class diagram, and a new §7.4 "Register user" sequence (copy §3.2). Update §12 layout.
+- **RUNNING.md:** new service step, port map row, the Keycloak re-import note (§6), smoke-test curl for registration.
 - **TEST_PLAN.md:** new API folder (§9.2) and UI cases (§9.3).
 - **CICD_PIPELINE.md:** add `user-service` to the service matrix.
 
@@ -437,7 +498,7 @@ Add folder **`7. Registration (user-service, PostgreSQL, Keycloak)`** to `api-te
 
 ## 11. Task breakdown (Trello checklist)
 
-Estimates assume one developer who knows the codebase. Each line can become a checklist item on the card.
+Estimates assume one developer who knows the codebase. These are the items in the checklist on the card.
 
 | # | Task | Depends on | Est. |
 |---|---|---|---|
@@ -472,7 +533,7 @@ Backend (T1–T7) and frontend (T8–T11) can run in parallel once the §4 contr
 
 - [ ] A visitor can open `/register` from the header, fill the form and get **201**, without any token.
 - [ ] The new user appears in Keycloak (realm `spring-microservices-security-realm`) **and** in `t_user_profile`. No password is stored in user-service.
-- [ ] The new user can log in through the existing **Login** button and sees "Hi <username>". Products load and an order can be placed.
+- [ ] The new user can log in through the existing **Login** button and sees "Hi \<username>". Products load and an order can be placed.
 - [ ] Duplicate username/email → 409 shown on the right field. Invalid input → 400 with field messages. Keycloak down → 503 with a friendly message.
 - [ ] If the DB write fails after Keycloak creation, the Keycloak user is deleted (covered by a test).
 - [ ] user-service appears in the gateway's aggregated Swagger UI.
@@ -498,4 +559,6 @@ Backend (T1–T7) and frontend (T8–T11) can run in parallel once the §4 contr
 
 ## 14. Out of scope
 
-Email verification, password reset ("forgot password"), profile editing, social login, roles/admin UI, rate limiting, and migrating the existing services to PostgreSQL.
+Email verification, password reset ("forgot password"), profile editing, social login, roles/admin UI, rate limiting, and migrating the existing services to PostgreSQL. These are tracked as separate follow-up cards (3–9) on the board; cards 1–6 depend on this one being done.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
