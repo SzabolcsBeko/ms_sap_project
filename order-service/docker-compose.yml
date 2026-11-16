@@ -1,12 +1,12 @@
-version: '4'
 services:
-  mysql:
-    image: mysql:5.7.44
-    container_name: mysql
+  postgres:
+    image: postgres:16
+    container_name: order-service-postgres
     environment:
-      MYSQL_ROOT_PASSWORD: mysql
+      POSTGRES_DB: order_service
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     ports:
-      - "3306:3306"
+      - "5434:5432"
     volumes:
-      - ./mysql:/var/lib/mysql
-      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./docker/postgres/data:/var/lib/postgresql/data

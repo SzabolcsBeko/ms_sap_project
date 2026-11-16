@@ -1,6 +1,6 @@
 # Running the Services — Local Setup Guide
 
-> Companion to [ARCHITECTURE.md](ARCHITECTURE.md). Step-by-step guide to run the full stack locally: infrastructure (MongoDB, MySQL ×2, Keycloak), the four Spring Boot services, and the Angular frontend.
+> Companion to [ARCHITECTURE.md](ARCHITECTURE.md). Step-by-step guide to run the full stack locally: infrastructure (MongoDB, PostgreSQL ×2, Keycloak), the four Spring Boot services, and the Angular frontend.
 > **Date:** 2026‑11‑08
 
 ---
@@ -10,7 +10,7 @@
 [`launch.sh`](../launch.sh) in the repository root starts everything in order. It waits until each component answers before it starts the next one, and the frontend always comes last:
 
 ```text
-1. Infrastructure (Docker Compose): MongoDB, MySQL (order), MySQL (inventory), Keycloak
+1. Infrastructure (Docker Compose): MongoDB, PostgreSQL (order), PostgreSQL (inventory), Keycloak
 2. inventory-service :8082
 3. product-service   :8080
 4. order-service     :8081
@@ -36,14 +36,16 @@
 
 How it behaves:
 - **Preflight:** checks Docker, Java 21+, Node and that ports 8080, 8081, 8082, 9000 and 4200 are free. If a port is taken it names the process or Docker container and starts **nothing**.
-- **Readiness:** databases are checked with `mysqladmin ping` / `mongosh ping`, Keycloak by its realm URL, services by `GET /api-docs`, the frontend by HTTP on :4200.
+- **Readiness:** databases are checked with `pg_isready` / `mongosh ping`, Keycloak by its realm URL, services by `GET /api-docs`, the frontend by HTTP on :4200.
 - **Fails fast:** if a container or service dies during startup, it stops right away and prints the relevant log lines instead of waiting for the timeout.
 - **Runs in the background:** apps keep running after the script returns. Logs are in `.run/logs/<name>.log`, PIDs in `.run/pids/`. `stop` kills each app's whole process tree, so no orphaned JVMs are left.
 - **No Maven install needed:** every service runs through `product-service`'s Maven wrapper (`order-service` and `inventory-service` have none of their own).
 - **Timeouts** default to 240s (infrastructure, services) and 300s (frontend). Override with `INFRA_TIMEOUT`, `SERVICE_TIMEOUT`, `FRONTEND_TIMEOUT`, e.g. `SERVICE_TIMEOUT=400 ./launch.sh`.
 - The first run is slower: it downloads Maven dependencies, runs `npm ci` and pulls Docker images.
 
-> **Data folders:** each database keeps its data in a bind-mounted folder that Docker creates on first start (`product-service/data`, `order-service/mysql`, `inventory-service/docker/mysql/data`, `api-gateway/volume-data`). They are git-ignored. To start over with empty databases, run `./launch.sh stop --all` and delete them.
+> **Data folders:** each database keeps its data in a bind-mounted folder that Docker creates on first start (`product-service/data`, `order-service/docker/postgres/data`, `inventory-service/docker/postgres/data`, `api-gateway/volume-data`). They are git-ignored. To start over with empty databases, run `./launch.sh stop --all` and delete them.
+>
+> **Coming from the MySQL version?** order-service and inventory-service moved from MySQL 5.7 to PostgreSQL 16 (see [DATABASE_CLOUD_STRATEGY.md](DATABASE_CLOUD_STRATEGY.md)). Existing orders are **not** carried over; the new databases start empty and Flyway re-seeds the inventory. The old containers (`mysql`, `inventory-service-mysql`) are no longer managed by the compose files: stop and remove them with `docker rm -f mysql inventory-service-mysql`, and delete the old data folders `order-service/mysql` and `inventory-service/docker/mysql/data` when you no longer need them.
 
 The rest of this guide describes the same steps done by hand.
 
@@ -73,8 +75,8 @@ The rest of this guide describes the same steps done by hand.
 | inventory-service | `8082` | |
 | Keycloak | `8181` | admin `admin` / `admin` |
 | MongoDB (product) | `27017` | `root` / `password`, db `product-service` |
-| MySQL (order) | `3306` | `root` / `mysql`, db `order_service` |
-| MySQL (inventory) | `3316` → 3306 | `root` / `mysql`, db `inventory_service` |
+| PostgreSQL 16 (order) | `5434` → 5432 | `postgres` / `postgres`, db `order_service` (override with `ORDER_DB_URL` / `ORDER_DB_USERNAME` / `ORDER_DB_PASSWORD`) |
+| PostgreSQL 16 (inventory) | `5435` → 5432 | `postgres` / `postgres`, db `inventory_service` (override with `INVENTORY_DB_URL` / `INVENTORY_DB_USERNAME` / `INVENTORY_DB_PASSWORD`) |
 | Keycloak MySQL | internal | `keycloak` / `password` |
 | Angular frontend | `4200` | OIDC client `angular-client` |
 
@@ -90,10 +92,10 @@ Each service ships its own `docker-compose.yml` for its datastore. Start them fr
 # MongoDB for product-service
 cd product-service && docker compose up -d && cd ..
 
-# MySQL for order-service (port 3306) — creates DB order_service
+# PostgreSQL for order-service (port 5434) — creates DB order_service
 cd order-service && docker compose up -d && cd ..
 
-# MySQL for inventory-service (port 3316) — creates DB inventory_service
+# PostgreSQL for inventory-service (port 5435) — creates DB inventory_service
 cd inventory-service && docker compose up -d && cd ..
 
 # Keycloak + its MySQL (port 8181)
@@ -106,9 +108,9 @@ Verify containers are healthy:
 docker ps
 ```
 
-You should see `mongodb`, `mysql`, `inventory-service-mysql`, `keycloak`, and `keycloak-mysql`.
+You should see `mongodb`, `order-service-postgres`, `inventory-service-postgres`, `keycloak`, and `keycloak-mysql`.
 
-> **Databases vs tables:** the MySQL `init.sql` scripts create the *databases*. The *tables* are created automatically by **Flyway** when each service boots (`spring.jpa.hibernate.ddl-auto=none`):
+> **Databases vs tables:** the PostgreSQL containers create the *databases* on first start (`POSTGRES_DB` in each `docker-compose.yml`). The *tables* are created automatically by **Flyway** when each service boots (`spring.jpa.hibernate.ddl-auto=none`):
 > - `order-service` → `V1__init.sql` creates `t_orders`
 > - `inventory-service` → `V1__init.sql` creates `t_inventory`, `V2__add_inventory.sql` seeds stock: `iphone_15`, `pixel_8`, `galaxy_24`, `oneplus_12` (100 each).
 
@@ -170,12 +172,12 @@ cd api-gateway && ./mvnw spring-boot:run
 Services **without** `mvnw` (use global Maven):
 
 ```bash
-# inventory-service (:8082) — needs MySQL on 3316
+# inventory-service (:8082) — needs PostgreSQL on 5435
 cd inventory-service && mvn spring-boot:run
 ```
 
 ```bash
-# order-service (:8081) — needs MySQL on 3306 AND inventory-service running
+# order-service (:8081) — needs PostgreSQL on 5434 AND inventory-service running
 cd order-service && mvn spring-boot:run
 ```
 
@@ -271,7 +273,7 @@ cd inventory-service && docker compose down && cd ..
 cd api-gateway && docker compose down && cd ..
 ```
 
-> To wipe data, also remove the mounted volume folders (`*/mysql`, `product-service/data`, `api-gateway/volume-data`). Keep them to preserve state between runs.
+> To wipe data, also remove the mounted volume folders (`*/docker/postgres/data`, `product-service/data`, `api-gateway/volume-data`). Keep them to preserve state between runs.
 
 ---
 
@@ -279,11 +281,12 @@ cd api-gateway && docker compose down && cd ..
 
 | Symptom | Likely cause / fix |
 |---|---|
-| `mongodb`, `mysql` or `keycloak-mysql` exits right after start (`WiredTiger metadata corruption`, or MySQL refusing a non-empty data directory) | The container's data folder is corrupt or half-written (e.g. Docker was killed mid-write). Run `./launch.sh stop --all`, delete that folder (`product-service/data`, `order-service/mysql` or `api-gateway/volume-data`) and start again. The container initializes it fresh, Flyway recreates the tables and the inventory seed, and Keycloak re-imports the realm. These folders used to be committed to git in an incomplete state; they are now git-ignored. |
+| `mongodb`, `order-service-postgres`, `inventory-service-postgres` or `keycloak-mysql` exits right after start (`WiredTiger metadata corruption`, a PostgreSQL data directory that is not empty but not a valid cluster, or MySQL refusing a non-empty data directory) | The container's data folder is corrupt or half-written (e.g. Docker was killed mid-write). Run `./launch.sh stop --all`, delete that folder (`product-service/data`, `order-service/docker/postgres/data`, `inventory-service/docker/postgres/data` or `api-gateway/volume-data`) and start again. The container initializes it fresh, Flyway recreates the tables and the inventory seed, and Keycloak re-imports the realm. These folders used to be committed to git in an incomplete state; they are now git-ignored. |
 | `401 Unauthorized` on API calls | No/expired JWT, or realm/client not set up in Keycloak (see §4). Confirm `issuer-uri` realm name matches. |
 | Login redirect fails / CORS error | `angular-client` redirect URIs / web origins not set to `http://localhost:4200`. |
 | order fails: *"not in stock"* | SKU has no inventory row, or quantity exceeds stock. Seed via `V2__add_inventory.sql` SKUs or add rows. |
-| Service won't start: table missing | Flyway didn't run — ensure the MySQL container is up first and the DB exists (`order_service` / `inventory_service`). |
+| Service won't start: table missing | Flyway didn't run — ensure the PostgreSQL container is up first and the DB exists (`order_service` / `inventory_service`). |
+| Service tests fail with *"Could not find a valid Docker environment"* (400 from Docker) | Docker Engine 29+ rejects the old API version Testcontainers 1.21 asks for. order-service, inventory-service and product-service pin `api.version=1.44` in `src/test/resources/docker-java.properties`; copy that file into any new service that uses Testcontainers. |
 | `order-service` 500 on order | `inventory-service` is down → circuit breaker fallback returns `false`. Start inventory first. |
 | Port already in use | Another process on 8080/8081/8082/9000/8181/4200 — stop it or change the port. |
 | `./mvnw: not found` (order/inventory) | Those two lack the wrapper — use `mvn`, or add it with `mvn -N wrapper:wrapper`. |

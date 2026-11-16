@@ -9,7 +9,7 @@
 
 | File | Purpose | Use it with |
 |---|---|---|
-| [`api-tests/microservices-shop.postman_collection.json`](../api-tests/microservices-shop.postman_collection.json) | 31 requests in 7 folders, each with a description and test assertions | Postman, Insomnia (Bruno: via Import) |
+| [`api-tests/microservices-shop.postman_collection.json`](../api-tests/microservices-shop.postman_collection.json) | 32 requests in 7 folders, each with a description and test assertions | Postman, Insomnia (Bruno: via Import) |
 | [`api-tests/local.postman_environment.json`](../api-tests/local.postman_environment.json) | Connection settings for the local stack (URLs, realm, client, test user) | Postman, Insomnia (Bruno: via Import) |
 | [`api-tests/bruno/`](../api-tests/bruno/) | The same collection as a **native Bruno collection** (`.bru` files), environment included | Bruno: **Open Collection** |
 
@@ -17,15 +17,15 @@
 
 | Tool | How to load it | Test scripts | Verified |
 |---|---|---|---|
-| **Postman** | Import the two JSON files | native | 44/44 assertions with a Postman-semantics runner (Postman app not installed here) |
-| **Bruno** | **Open Collection** → `api-tests/bruno` (or Import the JSON) | translated to Bruno's `bru`/`res` API | **Bruno 3.4.2's own converter and parser**; the `.bru` files pass 44/44 against the live stack |
+| **Postman** | Import the two JSON files | native | 46/46 assertions with newman (Postman app not installed here) |
+| **Bruno** | **Open Collection** → `api-tests/bruno` (or Import the JSON) | translated to Bruno's `bru`/`res` API | **Bruno 3.4.2's own converter and parser**; the `.bru` files pass 46/46 against the live stack |
 | **Insomnia** (v9+) | Import the two JSON files | mapped to Insomnia's after-response scripts | **not verified** (Insomnia not installed here) |
 
 The scripts deliberately use a small, common subset of the Postman API that all three can handle: `pm.test`, `pm.expect`, `pm.response.code/json()/text()/headers.get()/responseTime`, and **`pm.environment.get/set`**. Two Bruno details shaped this:
 - Bruno deliberately does **not** translate `pm.collectionVariables.set`. Values the scripts store (`accessToken`, `createdProductId`) therefore live in the **environment**, via `pm.environment.set`, which becomes `bru.setEnvVar` in Bruno.
 - Bruno turns `pm.response.text()` into `JSON.stringify(res.getBody())`, which wraps plain-text bodies in quotes. So plain-text checks use `to.include(...)` instead of an exact match.
 
-> **How it was verified:** every request and assertion was run against the live stack: folders 0–5 pass **44/44** in both the Postman JSON and the native Bruno files, and folder 6 was checked with the services stopped. If a script doesn't convert in your tool version, the requests still work; you just check the result by eye.
+> **How it was verified:** every request and assertion was run against the live stack: folders 0–5 pass **44/44** in both the Postman JSON and the native Bruno files, and folder 6 was checked with the services stopped. After the move of order-service and inventory-service to PostgreSQL 16, everything was re-run: folders 0–5 pass **44/44** with newman and **26/26 requests** with Bruno CLI 2, and folder 6 passes following §5 (breaker `OPEN → HALF_OPEN → CLOSED`). After product-service got input validation (2026‑11‑11), folders 0–5 pass **46/46** with newman and **27 requests / 46 checks** with Bruno CLI 2 (the two new `.bru` files, 2.4 and 2.5, follow the converter's format by hand). If a script doesn't convert in your tool version, the requests still work; you just check the result by eye.
 
 ---
 
@@ -79,7 +79,7 @@ Bruno edits these `.bru` files in place, so changes you make in Bruno show up in
 
 ### Command line (optional)
 - **Postman/newman:** `npx newman run api-tests/microservices-shop.postman_collection.json -e api-tests/local.postman_environment.json --folder "0. Setup & smoke" --folder "1. Security (gateway edge)" ...` (one `--folder` per folder 0–5).
-- **Bruno CLI:** `cd api-tests/bruno && bru run "0. Setup & smoke" --env "Microservices Shop: local"` (repeat per folder 0–5; requires `npm i -g @usebruno/cli`).
+- **Bruno CLI:** `cd api-tests/bruno && bru run "0. Setup & smoke" "1. Security (gateway edge)" "2. Product catalog (product-service, MongoDB)" "3. Inventory (inventory-service, PostgreSQL)" "4. Order flow (order-service → inventory-service)" "5. Known gaps (documents current behaviour)" --env "Microservices Shop- local"` (requires `npm i -g @usebruno/cli`, or prefix with `npx -y @usebruno/cli@2`). Run all folders in **one** call so the token from folder 0 reaches the others. `--env` takes the environment's **file name** (`environments/Microservices Shop- local.bru`, where Bruno replaced the `:`), not its display name.
 
 > **Keeping the formats in sync:** the Postman JSON is the source and `api-tests/bruno/` is generated from it. If you change the JSON, re-create the Bruno folder (Import it into Bruno at that location, replacing the old folder), or make the same change in both.
 
@@ -109,8 +109,10 @@ Folders **0–5 are automated** (run in order, top to bottom). Folder **6 is man
 | 2.1 | Create product (SKU `{{inStockSku}}`) | 201, Mongo `id`, saved to `createdProductId` |
 | 2.2 | List products | 200, array that contains the new product |
 | 2.3 | Malformed JSON | 400 |
+| 2.4 | Create product with `{}` | 400 problem response, `errors` names `name`, `description`, `skuCode`, `price`; nothing saved |
+| 2.5 | Create product with price `0` (all else valid) | 400, `errors` = `{price: "price must be greater than 0"}` |
 
-### 3. Inventory: gateway → inventory-service → MySQL
+### 3. Inventory: gateway → inventory-service → PostgreSQL
 | # | Request | Expected |
 |---|---|---|
 | 3.1 | `iphone_15`, quantity 1 | `true` |
@@ -119,7 +121,7 @@ Folders **0–5 are automated** (run in order, top to bottom). Folder **6 is man
 | 3.4 | unknown SKU `nokia_3310` | `false` |
 | 3.5 | missing `quantity` parameter | 400 |
 
-### 4. Order flow: gateway → order-service → inventory-service → MySQL
+### 4. Order flow: gateway → order-service → inventory-service → PostgreSQL
 | # | Request | Expected |
 |---|---|---|
 | 4.1 | Place order, in stock | 201 `Order Placed Successfully` |
@@ -131,7 +133,7 @@ Folders **0–5 are automated** (run in order, top to bottom). Folder **6 is man
 ### 5. Known gaps: tests that assert today's (weak) behaviour
 | # | Request | Expected today | What it shows |
 |---|---|---|---|
-| 5.1 | Create product with `{}` | 201, all fields `null` | no input validation |
+| ~~5.1~~ | ~~Create product with `{}`~~ | **fixed**: now 400, see 2.4 | input validation added to product-service |
 | 5.2–5.4 | Order 100 `pixel_8`, again 100, then check stock | 201, 201, still `true` for 100 | **overselling**: orders never decrement stock |
 | 5.5 | `GET :8080/api/product` with no token | 200 | services are reachable **around** the gateway, without auth |
 | 5.6 | `GET :8082/api/inventory` with no token | 200 | same, inventory-service |
@@ -186,68 +188,70 @@ What to learn from it:
 
 The API collection checks the services. This section walks through the **Angular web app** the way a user would, and shows where to look in the browser's developer tools to see the same flows (login → gateway → services).
 
-Everything below was observed in the running app (Angular 18 dev server, Keycloak 24) on 2026‑11‑08.
+Everything below was observed in the running app (Angular 18 dev server, Keycloak 24). First run 2026‑11‑08 found the bugs in §6.5; they were fixed on branch `bugfix/frontend-ui-bugs` and re-checked on 2026‑11‑11.
 
 ### 6.1 Before you start
 
 1. Start everything: `./launch.sh` (the frontend is the last step, at http://localhost:4200).
-2. Use a **browser window at least 768 px wide**. Below that width the header collapses into a ☰ button that does nothing, so the **Login** link can't be reached (see UI‑1 in §6.5).
-3. Open the developer tools: **Network** tab (filter `9000` for API calls, `8181` for Keycloak) and **Console** tab.
+2. Any window width works. Below 768 px the header shows a ☰ button that opens the menu with **Login/Logout**.
+3. Open the developer tools: **Network** tab (filter `9000` for API calls, `8181` for Keycloak) and **Console** tab. The console should stay free of red errors in every scenario.
 4. Test user: `testuser`, with the password from `api-gateway/docker/keycloak/realms/realm-export.json`.
-
-> **Reload between scenarios.** The page keeps its last success/failure message until it's reloaded (UI‑2), and a silent logout leaves stale data on screen (UI‑4). A reload gives each scenario a clean start.
 
 ### 6.2 What happens behind the scenes
 
 | You do | Browser → | Network tab shows |
 |---|---|---|
-| Open the app logged out | app → gateway | `GET :9000/api/product → 401` (no token yet) |
+| Open the app logged out | (nothing) | no call to `:9000`: the product list needs a token, so the app doesn't ask for it |
 | Click **Login** | app → Keycloak | redirect to `:8181/…/auth?response_type=code&code_challenge_method=S256` (Authorization Code + PKCE) |
 | Sign in | Keycloak → app | redirect back to `:4200`, then `POST :8181/…/token` (code exchanged for tokens) |
 | Product list loads | app → gateway → product-service | `OPTIONS :9000/api/product → 200` (CORS preflight), `GET :9000/api/product → 200` with `Authorization: Bearer …` |
-| **Order Now** | app → gateway → order-service → inventory-service | `POST :9000/api/order → 201` (or 500 when out of stock) |
+| **Order Now** | app → gateway → order-service → inventory-service | one `POST :9000/api/order → 201` per click (or 500 when out of stock) |
 | **Add Product** | app → gateway → product-service | `POST :9000/api/product → 201` |
-| About 4.5 min after login | app → Keycloak | `POST :8181/…/token → 200` (refresh). The app then **rejects** the result and logs you out (UI‑3) |
+| About 4.5 min after login | app → Keycloak | `POST :8181/…/token → 200` (refresh token). The app accepts the new tokens and you stay logged in |
 
 ### 6.3 Test cases
 
-Run them in order. "Expected" is what the app does today; ⚠ marks behaviour that is a known bug (§6.5).
+Run them in order.
 
 | # | Scenario | Steps | Expected |
 |---|---|---|---|
-| UI‑01 | Anonymous home page | Open http://localhost:4200 | Header: **Login**. Page: **"Products (0)"** and **"No products found!"**, even though products exist ⚠ (the list call gets 401). No **Create Product** button. |
-| UI‑02 | Login | Click **Login** → sign in as `testuser` | Keycloak page *"Sign in to your account"*, then back to the app: header **"Hi testuser"** + **Logout**, **"Products (N)"**, **Create Product** button. ⚠ In light mode "Hi testuser" is invisible (white on white). |
-| UI‑03 | Order without quantity | Leave **Quantity** empty → **Order Now** | Red **"Order Failed, please try again later"** + **"Quantity cannot be null"**. No request is sent. |
-| UI‑04 | Successful order | Quantity `1` on an **iPhone 15** row → **Order Now** | Green **"Order Placed Successfully"**; Network: `POST /api/order → 201`. The quantity field isn't cleared. |
-| UI‑05 | Out of stock (fresh page) | **Reload**, quantity `1000` → **Order Now** | Red **"Order Failed, please try again later"**; Network: `POST /api/order → 500`. |
-| UI‑06 | Out of stock after a success ⚠ | Do UI‑04, then (no reload) quantity `1000` → **Order Now** | Network shows `500`, but the page **still says "Order Placed Successfully"** (UI‑2). |
-| UI‑07 | Add product: required fields | **Create Product**, click into **SKU Code**, then click another field without typing | **"SKU Code is required."**; **Add Product** is disabled. |
-| UI‑08 | Add product: weak validation ⚠ | Enter SKU `ab`, Name `x`, Description `short`, keep Price `0` | **Add Product is enabled**, no messages. The template's "at least 3/10 characters" and "greater than 0" messages never appear (UI‑5). Don't submit, or you'll add a junk product. |
-| UI‑09 | Add product: success | SKU `oneplus_12`, Name `OnePlus 12`, any description, Price `799` → **Add Product** | Green **"Product Created Successfully"**, form cleared; Network: `POST /api/product → 201`. You stay on `/add-product`; go back by clicking the **"Spring Boot Microservices Shop"** title (full reload). |
-| UI‑10 | Order the new product | On the list, **OnePlus 12** (last row), quantity `2` → **Order Now** | `POST /api/order → 201`. The message appears **at the top of the list**, so scroll up to see it. Use a seeded SKU (iphone_15, pixel_8, galaxy_24, oneplus_12); any other SKU has no stock, so ordering it fails. |
-| UI‑11 | Session expiry ⚠ | Stay logged in about 5 minutes (token lifetime), then look at the header | Header switches back to **Login** on its own; Console: *"silent renew failed!"* (UI‑3). The old product list stays on screen. |
-| UI‑12 | Order after silent logout ⚠ | After UI‑11, quantity `1` → **Order Now** | **Nothing happens**: no request, no message (stale message stays). Console: `TypeError: Cannot read properties of null (reading 'email')`. Reload and log in again. |
-| UI‑13 | Logout | Log in, then **Logout** | Back to **"Products (0)"**, header **Login**. Clicking **Login** again shows the Keycloak sign-in form, so the Keycloak session really ended. (Without logging out, **Login** goes straight back in without a password: single sign-on.) |
-| UI‑14 | Add product while logged out ⚠ | Logged out, open http://localhost:4200/add-product directly, fill all fields → **Add Product** | The page opens (no route guard). Submit sends `POST /api/product → 401`, and the page shows **no message**; the form stays filled. The gateway still protects the data. |
-| UI‑15 | Narrow window ⚠ | Make the window narrower than 768 px | **Login/Logout** disappear and a ☰ button appears that does nothing (UI‑1). |
+| UI‑01 | Anonymous home page | Open http://localhost:4200 | Header: **Login**. Page: **"Products (0)"** and **"Please log in to see the products."** No **Create Product** button, no call to `:9000`, no console errors. |
+| UI‑02 | Login | Click **Login** → sign in as `testuser` | Keycloak page *"Sign in to your account"*, then back to the app: header **"Hi testuser"** + **Logout** (readable in light and dark mode), **"Products (N)"**, **Create Product** button. |
+| UI‑03 | Order without quantity | Leave **Quantity** empty → **Order Now** | Red **"Quantity cannot be empty"** under that product. No request is sent. |
+| UI‑04 | Successful order | Quantity `1` on an **iPhone 15** row → **Order Now** | Green **"Order Placed Successfully"** under that product; Network: `POST /api/order → 201`. |
+| UI‑05 | Out of stock | Quantity `1000` → **Order Now** | Red **"Order Failed, please try again later"** under that product; Network: `POST /api/order → 500`. |
+| UI‑06 | Out of stock after a success | Do UI‑04, then (no reload) quantity `1000` on the same row → **Order Now** | The green message is **replaced** by the red one. Network: exactly one new `POST` (500). |
+| UI‑07 | Add product: required fields | **Create Product**, click into **SKU Code**, then click another field without typing | **"SKU Code is required."**; **Add Product** is disabled (faded). |
+| UI‑08 | Add product: validation | Enter SKU `ab`, Name `x`, Description `short`, keep Price `0`, click between the fields | **"SKU Code must be at least 3 characters long."**, **"Name must be at least 3 characters long."**, **"Description must be at least 10 characters long."**, **"Price must be greater than 0."**; **Add Product** stays disabled. |
+| UI‑09 | Add product: success | SKU `oneplus_12`, Name `OnePlus 12`, a description of 10+ characters, Price `799` → **Add Product** | Green **"Product Created Successfully"**, form cleared; Network: `POST /api/product → 201`. **← Back to products** returns to the list without a full reload. |
+| UI‑10 | Order the new product | On the list, **OnePlus 12** (last row), quantity `2` → **Order Now** | `POST /api/order → 201`; the message appears under the OnePlus row, no scrolling needed. Use a seeded SKU (iphone_15, pixel_8, galaxy_24, oneplus_12); any other SKU has no stock, so ordering it fails. |
+| UI‑11 | Long session | Stay logged in for 5+ minutes (token lifetime is 5 min) | Header still shows **"Hi testuser"**. Network: `POST :8181/…/token → 200` about every 4.5 min. Console: no *"silent renew failed"*. |
+| UI‑12 | Order after the refresh | After UI‑11, quantity `1` → **Order Now** | `POST /api/order → 201` with the refreshed token. |
+| UI‑13 | Logout | **Logout** | Back to **"Products (0)"**, **"Please log in to see the products."**, header **Login**. Clicking **Login** again shows the Keycloak sign-in form, so the Keycloak session really ended. (Without logging out, **Login** goes straight back in without a password: single sign-on.) |
+| UI‑14 | Add product while logged out | Logged out, open http://localhost:4200/add-product directly | You're sent to the Keycloak sign-in page; after signing in you land back on **Add Product**. If a save fails, the page shows **"Product could not be created, please try again later"** and keeps the values. |
+| UI‑15 | Narrow window | Make the window narrower than 768 px | **Login/Logout** move behind the ☰ button; clicking it opens and closes the menu. |
 
 ### 6.4 Clean-up
 
-UI‑09 creates a product, and UI‑04/05/10 create orders. There are no delete endpoints. To reset, see §8 (Data).
+UI‑09 creates a product, and UI‑04/05/06/10/12 create orders. There are no delete endpoints. To reset, see §8 (Data).
 
-### 6.5 UI bugs found
+### 6.5 UI bugs found (all fixed)
 
-| ID | Bug | Where | Suggested fix |
+Found on 2026‑11‑08, fixed on branch `bugfix/frontend-ui-bugs`. Each fix has a unit test (`ng test`) and was re-checked in the browser.
+
+| ID | Bug | Where | Fix |
 |---|---|---|---|
-| UI‑1 | Header menu button has no handler; below 768 px the Login/Logout links can't be reached | `header.component.html` | toggle the `#mobile-menu` visibility on click (or always show the auth link) |
-| UI‑2 | `orderSuccess` / `orderFailed` are never reset, so a success message sticks over later failures | `home-page.component.ts` `orderProduct()` | reset all three flags at the start of every order |
-| UI‑3 | **Silent token renewal fails** ("authCallback incorrect nonce … token(s) validation failed"), so the user is logged out about 4.5 min after login | `auth.config.ts` | add `ignoreNonceAfterRefresh: true` (Keycloak keeps the original nonce in refreshed ID tokens) |
-| UI‑4 | Every **Order Now** click subscribes to `userData$` and never unsubscribes. Old subscriptions re-run on every user-data change (seen as the `null … email` errors on logout); if user data is refreshed instead of cleared, earlier clicks' orders could be sent again | `home-page.component.ts` `orderProduct()` | use `userData$.pipe(take(1))` |
-| UI‑5 | Validation messages for min length and price > 0 never trigger; only `required` validators exist (price 0 accepted) | `add-product.component.ts` | add `Validators.minLength(...)` / `Validators.min(0.01)` to match the template |
-| UI‑6 | Home page asks for products before login and shows a 401 as "No products found!" | `home-page.component.ts` `ngOnInit()` | load products only when authenticated (or handle the error) |
-| UI‑7 | Greeting "Hi {username}" is `text-white` on a white header in light mode | `header.component.html` | use `text-gray-900 dark:text-white` |
-| UI‑8 | `/add-product` has no route guard and failed saves show no error | `app.routes.ts`, `add-product.component.ts` | add an auth guard; show an error on failure |
-| UI‑9 | Success/failure messages render at the top of the list, out of view when ordering lower rows; no "back" link from Add Product | `home-page` / `add-product` templates | show the message next to the row (or as a toast); add a back link |
+| UI‑1 | Header menu button had no handler; below 768 px the Login/Logout links couldn't be reached | `header.component.*` | the ☰ button toggles the menu (`menuOpen`, `aria-expanded`) |
+| UI‑2 | `orderSuccess` / `orderFailed` were never reset, so a success message stuck over later failures | `home-page.component.ts` | one `orderResult` that every click replaces |
+| UI‑3 | **Silent token renewal failed** ("token(s) validation failed"), so the user was logged out about 4.5 min after login | `auth.config.ts` | `ignoreNonceAfterRefresh: true` (Keycloak keeps the original nonce in refreshed ID tokens) |
+| UI‑4 | Every **Order Now** click subscribed to `userData$` and never unsubscribed; after a silent logout clicks failed with `null … email` and the stale list stayed on screen | `home-page.component.ts` | `userData$.pipe(take(1))`; the list is cleared on logout; a missing user shows "please log in again" |
+| UI‑5 | Min-length and price > 0 messages never triggered; only `required` validators existed (price 0 accepted) | `add-product.component.ts` | `Validators.minLength(3/3/10)` and `Validators.min(0.01)`; the disabled button now looks disabled |
+| UI‑6 | Home page asked for products before login and showed the 401 as "No products found!" | `home-page.component.ts` | products load only when logged in; logged-out users see "Please log in…", load errors show "Could not load the products…" |
+| UI‑7 | Greeting "Hi {username}" was `text-white` on a white header in light mode | `header.component.html` | `text-gray-900 dark:text-white` |
+| UI‑8 | `/add-product` had no route guard and failed saves showed no error | `app.routes.ts`, `add-product.component.*` | `autoLoginPartialRoutesGuard` (login, then back to the page); error message on a failed save |
+| UI‑9 | Success/failure messages rendered at the top of the list, out of view for lower rows; no "back" link from Add Product | `home-page` / `add-product` templates | the message shows under the ordered product; **← Back to products** link |
+| UI‑10 | Header crashed while logged out: `Cannot read properties of null (reading 'preferred_username')` | `header.component.ts` | `userData?.preferred_username ?? ""` |
+| UI‑11 | Orders sent `firstName`/`lastName` from fields Keycloak doesn't have, so both were `undefined` | `home-page.component.ts` | use Keycloak's `given_name` / `family_name` (order-service still drops `userDetails`, see §7) |
 
 ---
 
@@ -259,7 +263,7 @@ API and service findings (UI bugs are in §6.5):
 |---|---|---|
 | Out of stock / unknown SKU returns **500** | order-service | throw a domain exception mapped to 409/422 with `@ControllerAdvice` |
 | **Overselling**: stock never decremented | order + inventory | reserve or decrement stock in the order flow (transactional or Saga) |
-| **No input validation**: empty product is saved | product-service | `@Valid` + `@NotBlank`/`@Positive` on `ProductRequest` |
+| ~~**No input validation**: empty product is saved~~ **Fixed** (2.4, 2.5) | product-service | `@Valid` + `@NotBlank`/`@Positive` on `ProductRequest`; 400 problem response listing each invalid field |
 | Services reachable **without auth** on their own ports | all services | keep them on a private network, or make each a resource server |
 | `userDetails` sent by the web app is **dropped** | order-service | add it to `OrderRequest`/`Order` (also needed for the planned Kafka notifications) |
 | Gateway fallback on a **public** route returns **401** instead of 503 | api-gateway `SecurityConfig` | add `/fallbackRoute` to the permitted URLs |
@@ -269,7 +273,7 @@ API and service findings (UI bugs are in §6.5):
 
 ## 8. Notes & troubleshooting
 
-- **Data:** runs add products and orders to your local databases. There are no delete endpoints, and folder 5.1 adds a blank product that also shows up in the web app. To start fresh: `./launch.sh stop --all`, delete the data folders listed in [RUNNING.md](RUNNING.md) §0, then `./launch.sh`.
+- **Data:** runs add products and orders to your local databases. There are no delete endpoints. Runs from before the product validation fix added blank products (no name or price) that show up in the web app as "- Price:"; remove them with `docker exec mongodb mongosh -u root -p password --authenticationDatabase admin product-service --eval 'db.product.deleteMany({skuCode: null, name: null})'`. To start fresh: `./launch.sh stop --all`, delete the data folders listed in [RUNNING.md](RUNNING.md) §0, then `./launch.sh`.
 - **401 everywhere:** the token expired (5 min). Run 0.1 again.
 - **Connection refused:** the stack isn't running. Check with `./launch.sh status`.
 - **4.5 fails with `OPEN`/`HALF_OPEN`:** you ran folder 6 recently. Place 3 successful orders, or wait, and run it again.

@@ -3,9 +3,12 @@
 
 # Docker bind-mounted database data (created by docker compose, never commit)
 product-service/data/
+order-service/docker/postgres/data/
+inventory-service/docker/postgres/data/
+api-gateway/volume-data/
+# Old MySQL 5.7 data folders from before the PostgreSQL migration (safe to delete)
 order-service/mysql/
 inventory-service/docker/mysql/data/
-api-gateway/volume-data/
 
 # Build output (order-service, inventory-service and frontend have no .gitignore of their own)
 target/

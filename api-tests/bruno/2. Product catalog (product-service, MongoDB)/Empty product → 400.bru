@@ -1,0 +1,38 @@
+meta {
+  name: Empty product → 400
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{gatewayUrl}}/api/product
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {}
+}
+
+script:post-response {
+  test('Status is 400', function () { expect(res.getStatus()).to.eql(400); });
+  test('Names every missing field', function () {
+    const p = res.getBody();
+    expect(p.title).to.eql('Invalid product');
+    expect(p.errors).to.have.all.keys('name', 'description', 'skuCode', 'price');
+  });
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  An empty JSON object is rejected by bean validation (`@Valid` on `ProductRequest`): `skuCode`, `name` and `description` must not be blank, and `price` must be greater than 0. The answer is a problem response (`application/problem+json`) whose `errors` object names each invalid field. Nothing is saved.
+  
+  Before the fix this request returned 201 and saved a blank product (old known gap 5.1).
+}

@@ -110,3 +110,4 @@ Given a cloud target, a trivial schema, and a desire to future-proof, **PostgreS
 | **Scalability source** | Replicas, pooling, stateless horizontal scaling, event-driven decoupling — independent of engine choice. |
 | **Effort** | Low (JPA + Flyway abstract most of it). |
 | **Blast radius** | order-service, inventory-service only. |
+| **Status** | ✅ **Implemented** (branch `feature/postgresql-migration`): both services run on PostgreSQL 16 (host ports 5434 / 5435), Flyway migrations rewritten, Testcontainers on `postgres:16`, `launch.sh` checks readiness with `pg_isready`. Keycloak's own MySQL 8 is unchanged. |

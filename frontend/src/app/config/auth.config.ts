@@ -11,5 +11,7 @@ export const authConfig: PassedInitialConfig = {
     silentRenew: true,
     useRefreshToken: true,
     renewTimeBeforeTokenExpiresInSeconds: 30,
+    // Keycloak keeps the original nonce in refreshed ID tokens; without this the refresh is rejected
+    ignoreNonceAfterRefresh: true,
   }
 }

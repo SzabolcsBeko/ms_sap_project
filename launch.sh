@@ -8,7 +8,7 @@
 #   ./launch.sh status       show what is running
 #
 # Startup order (each step waits until the previous one responds):
-#   1. Infrastructure (Docker Compose): MongoDB, MySQL (order), MySQL (inventory), Keycloak
+#   1. Infrastructure (Docker Compose): MongoDB, PostgreSQL (order), PostgreSQL (inventory), Keycloak
 #   2. inventory-service :8082
 #   3. product-service   :8080
 #   4. order-service     :8081   (calls inventory-service)
@@ -30,7 +30,7 @@ BACKEND_SERVICES="inventory-service:8082 product-service:8080 order-service:8081
 FRONTEND_PORT=4200
 COMPOSE_DIRS="product-service order-service inventory-service api-gateway"
 
-# Timeouts in seconds. MySQL 5.7 has no arm64 image, so it is slow under emulation on Apple Silicon.
+# Timeouts in seconds. Keycloak and the first start of each database (initdb) take the longest.
 INFRA_TIMEOUT="${INFRA_TIMEOUT:-240}"
 SERVICE_TIMEOUT="${SERVICE_TIMEOUT:-240}"
 FRONTEND_TIMEOUT="${FRONTEND_TIMEOUT:-300}"
@@ -115,13 +115,17 @@ mongo_ready() {
   container_running mongodb || return 2
   docker exec mongodb mongosh --quiet --eval 'db.runCommand({ping: 1}).ok' 2>/dev/null | grep -q 1
 }
+# pg_isready over TCP (-h 127.0.0.1): on first start the image runs initdb on a socket-only
+# temporary server, so a socket check could pass before the real server is listening.
+# pg_isready exits 2 for "no response yet", which wait_until would read as "container died",
+# so any failure is reported as 1 (not ready yet).
 order_db_ready() {
-  container_running mysql || return 2
-  docker exec mysql mysqladmin ping -h127.0.0.1 -uroot -pmysql --silent
+  container_running order-service-postgres || return 2
+  docker exec order-service-postgres pg_isready -q -h 127.0.0.1 -U postgres -d order_service || return 1
 }
 inventory_db_ready() {
-  container_running inventory-service-mysql || return 2
-  docker exec inventory-service-mysql mysqladmin ping -h127.0.0.1 -uroot -pmysql --silent
+  container_running inventory-service-postgres || return 2
+  docker exec inventory-service-postgres pg_isready -q -h 127.0.0.1 -U postgres -d inventory_service || return 1
 }
 keycloak_ready() {   # the realm URL returns 200 only once the realm is imported
   container_running keycloak || return 2
@@ -188,8 +192,8 @@ start_infrastructure() {
     ok "compose up: $dir"
   done
   wait_for_container "MongoDB :27017"        mongodb                 mongo_ready
-  wait_for_container "MySQL order :3306"     mysql                   order_db_ready
-  wait_for_container "MySQL inventory :3316" inventory-service-mysql inventory_db_ready
+  wait_for_container "PostgreSQL order :5434"     order-service-postgres     order_db_ready
+  wait_for_container "PostgreSQL inventory :5435" inventory-service-postgres inventory_db_ready
   wait_for_container "Keycloak realm :8181"  keycloak                keycloak_ready
   ok "infrastructure is ready"
 }
@@ -297,7 +301,7 @@ cmd_status() {
     printf '  %-18s :%-5s %s\n' "$name" "$port" "$state"
   done
   step "Infrastructure containers"
-  docker ps --filter name='^mongodb$' --filter name='^mysql$' --filter name='^inventory-service-mysql$' \
+  docker ps --filter name='^mongodb$' --filter name='^order-service-postgres$' --filter name='^inventory-service-postgres$' \
     --filter name='^keycloak$' --filter name='^keycloak-mysql$' \
     --format '  {{.Names}}\t{{.Status}}' 2>/dev/null || warn "Docker is not reachable"
 }

@@ -9,40 +9,41 @@
         </button>
       }
     </div>
-    @if (products.length > 0) {
-      @if (orderSuccess) {
-        <h4 class="text-green-500 font-bold">Order Placed Successfully</h4>
-      } @else if (orderFailed) {
-        <h4 class="text-red-500 font-bold">Order Failed, please try again later</h4>
-        @if(quantityIsNull) {
-          <h4 class="text-red-500 font-bold">Quantity cannot be null</h4>
-        }
-      }
-      <ul class="list-disc list-inside">
-        @for (product of products; track product.id) {
-          <li class="mb-2 p-4 bg-gray-100 rounded-lg shadow-sm flex justify-between items-center">
-            <div>
-              <span class="font-semibold">{{ product.name }}</span> -
-              <span class="text-gray-600">
-                Price: {{ product.price }}
-              </span>
-              <br/>
-              <span >
-                Quantity: <input type="number" #quantityInput/>
-              </span>
-              <br/>
+    @if (!isAuthenticated) {
+      <p class="text-gray-700 dark:text-gray-300 font-semibold">Please log in to see the products.</p>
+    } @else if (loadFailed) {
+      <p class="text-red-500 font-semibold">Could not load the products, please try again later.</p>
+    } @else if (products.length > 0) {
+      <ul class="list-none">
+        @for (product of products; track productKey(product)) {
+          <li class="mb-2 p-4 bg-gray-100 rounded-lg shadow-sm">
+            <div class="flex justify-between items-center">
+              <div>
+                <span class="font-semibold">{{ product.name }}</span> -
+                <span class="text-gray-600">
+                  Price: {{ product.price }}
+                </span>
+                <br/>
+                <span >
+                  Quantity: <input type="number" #quantityInput/>
+                </span>
+                <br/>
+              </div>
+              <button class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 ml-4"
+                      (click)="orderProduct(product, quantityInput.value)">
+                Order Now
+              </button>
             </div>
-            <button class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 ml-4"
-                    (click)="orderProduct(product, quantityInput.value)">
-              Order Now
-            </button>
+            @if (orderResult?.productKey === productKey(product)) {
+              <p role="status" class="mt-2 font-bold"
+                 [class.text-green-600]="orderResult?.success"
+                 [class.text-red-500]="!orderResult?.success">
+                {{ orderResult?.message }}
+              </p>
+            }
           </li>
         }
       </ul>
-    } @else if (products.length === 100) {
-      <span class="text-sm text-gray-700">
-      Click <a class="text-blue-500 hover:underline cursor-pointer">Load More</a> to see more products
-    </span>
     } @else {
       <p class="text-red-500 font-semibold">No products found!</p>
     }

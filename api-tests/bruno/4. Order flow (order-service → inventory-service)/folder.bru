@@ -8,7 +8,7 @@ auth {
 }
 
 docs {
-  Flow: client → gateway → order-service → **inventory-service** (REST call through Resilience4j circuit breaker + retry) → order saved in MySQL.
+  Flow: client → gateway → order-service → **inventory-service** (REST call through Resilience4j circuit breaker + retry) → order saved in PostgreSQL.
   
   This is the only service-to-service call in the system.
 }
