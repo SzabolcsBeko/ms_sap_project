@@ -2,7 +2,7 @@
   <a routerLink="/" class="inline-block mb-2 text-blue-500 hover:underline">&larr; Back to products</a>
   <h2 class="text-2xl font-bold mb-4">Create an account</h2>
 
-  <div *ngIf="isAuthenticated" role="status" class="text-gray-700">
+  <div *ngIf="isAuthenticated" role="status" class="text-gray-700 dark:text-gray-300">
     You are already logged in.
   </div>
 
@@ -18,7 +18,7 @@
 
     <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" *ngIf="!successMessage">
       <div class="mb-4">
-        <label class="block text-gray-700" for="username">Username</label>
+        <label class="block text-gray-700 dark:text-gray-300" for="username">Username</label>
         <input type="text" id="username" formControlName="username"
                class="border rounded w-full py-2 px-3 text-gray-700"/>
         <div *ngIf="username?.invalid && (username?.dirty || username?.touched)" class="text-red-500">
@@ -31,7 +31,7 @@
       </div>
 
       <div class="mb-4">
-        <label class="block text-gray-700" for="email">Email</label>
+        <label class="block text-gray-700 dark:text-gray-300" for="email">Email</label>
         <input type="email" id="email" formControlName="email"
                class="border rounded w-full py-2 px-3 text-gray-700"/>
         <div *ngIf="email?.invalid && (email?.dirty || email?.touched)" class="text-red-500">
@@ -43,7 +43,7 @@
       </div>
 
       <div class="mb-4">
-        <label class="block text-gray-700" for="firstName">First name</label>
+        <label class="block text-gray-700 dark:text-gray-300" for="firstName">First name</label>
         <input type="text" id="firstName" formControlName="firstName"
                class="border rounded w-full py-2 px-3 text-gray-700"/>
         <div *ngIf="firstName?.invalid && (firstName?.dirty || firstName?.touched)" class="text-red-500">
@@ -53,7 +53,7 @@
       </div>
 
       <div class="mb-4">
-        <label class="block text-gray-700" for="lastName">Last name</label>
+        <label class="block text-gray-700 dark:text-gray-300" for="lastName">Last name</label>
         <input type="text" id="lastName" formControlName="lastName"
                class="border rounded w-full py-2 px-3 text-gray-700"/>
         <div *ngIf="lastName?.invalid && (lastName?.dirty || lastName?.touched)" class="text-red-500">
@@ -63,7 +63,7 @@
       </div>
 
       <div class="mb-4">
-        <label class="block text-gray-700" for="password">Password</label>
+        <label class="block text-gray-700 dark:text-gray-300" for="password">Password</label>
         <input type="password" id="password" formControlName="password"
                class="border rounded w-full py-2 px-3 text-gray-700"/>
         <div *ngIf="password?.invalid && (password?.dirty || password?.touched)" class="text-red-500">
@@ -76,7 +76,7 @@
       </div>
 
       <div class="mb-4">
-        <label class="block text-gray-700" for="confirmPassword">Confirm password</label>
+        <label class="block text-gray-700 dark:text-gray-300" for="confirmPassword">Confirm password</label>
         <input type="password" id="confirmPassword" formControlName="confirmPassword"
                class="border rounded w-full py-2 px-3 text-gray-700"/>
         <div *ngIf="confirmPassword?.invalid && (confirmPassword?.dirty || confirmPassword?.touched)" class="text-red-500">

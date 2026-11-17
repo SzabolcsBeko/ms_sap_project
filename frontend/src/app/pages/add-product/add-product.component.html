@@ -9,7 +9,7 @@
   }
   <form [formGroup]="addProductForm" (ngSubmit)="onSubmit()">
     <div class="mb-4">
-      <label class="block text-gray-700" for="skuCode">SKU Code</label>
+      <label class="block text-gray-700 dark:text-gray-300" for="skuCode">SKU Code</label>
       <input
         type="text"
         id="skuCode"
@@ -23,7 +23,7 @@
     </div>
 
     <div class="mb-4">
-      <label class="block text-gray-700" for="name">Name</label>
+      <label class="block text-gray-700 dark:text-gray-300" for="name">Name</label>
       <input
         type="text"
         id="name"
@@ -37,7 +37,7 @@
     </div>
 
     <div class="mb-4">
-      <label class="block text-gray-700" for="description">Description</label>
+      <label class="block text-gray-700 dark:text-gray-300" for="description">Description</label>
       <textarea
         id="description"
         formControlName="description"
@@ -50,7 +50,7 @@
     </div>
 
     <div class="mb-4">
-      <label class="block text-gray-700" for="price">Price</label>
+      <label class="block text-gray-700 dark:text-gray-300" for="price">Price</label>
       <input
         type="number"
         id="price"

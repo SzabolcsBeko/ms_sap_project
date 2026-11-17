@@ -1,3 +1,11 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Explicit page colours for both schemes. Without them the page is transparent and, in a browser
+   using dark mode, shows a dark canvas behind black headings (Tailwind darkMode = 'media'). */
+@layer base {
+  body {
+    @apply bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100;
+  }
+}
