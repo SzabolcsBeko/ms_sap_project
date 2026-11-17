@@ -1,4 +1,5 @@
 import {Component, inject, OnInit} from '@angular/core';
+import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
 import {FormBuilder, FormGroup, ReactiveFormsModule, Validators} from "@angular/forms";
 import {NgIf} from "@angular/common";
 import {RouterLink} from "@angular/router";
@@ -38,6 +39,13 @@ export class RegisterComponent implements OnInit {
         Validators.pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/)]],
       confirmPassword: ['', [Validators.required]]
     }, {validators: passwordMatchValidator});
+
+    // A server error (e.g. 409 "username taken") describes the values that were submitted;
+    // once the user edits the form it is stale, so drop the banner. Field-level "taken"
+    // errors already clear themselves because editing re-runs the control's validators.
+    this.registerForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => {
+      this.errorMessage = '';
+    });
   }
 
   ngOnInit(): void {
