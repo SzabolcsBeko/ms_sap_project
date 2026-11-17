@@ -8,12 +8,13 @@
 #   ./launch.sh status       show what is running
 #
 # Startup order (each step waits until the previous one responds):
-#   1. Infrastructure (Docker Compose): MongoDB, PostgreSQL (order), PostgreSQL (inventory), Keycloak
+#   1. Infrastructure (Docker Compose): MongoDB, PostgreSQL (order/inventory/user), Keycloak
 #   2. inventory-service :8082
 #   3. product-service   :8080
 #   4. order-service     :8081   (calls inventory-service)
-#   5. api-gateway       :9000   (routes to the three services, validates JWTs)
-#   6. frontend          :4200   (always last)
+#   5. user-service      :8083   (registration via the Keycloak Admin API)
+#   6. api-gateway       :9000   (routes to the four services, validates JWTs)
+#   7. frontend          :4200   (always last)
 #
 # Logs: .run/logs/<name>.log   PIDs: .run/pids/<name>.pid
 # Written for the bash 3.2 that ships with macOS.
@@ -26,9 +27,9 @@ LOG_DIR="$RUN_DIR/logs"
 PID_DIR="$RUN_DIR/pids"
 
 # Backend services in start order, as name:port.
-BACKEND_SERVICES="inventory-service:8082 product-service:8080 order-service:8081 api-gateway:9000"
+BACKEND_SERVICES="inventory-service:8082 product-service:8080 order-service:8081 user-service:8083 api-gateway:9000"
 FRONTEND_PORT=4200
-COMPOSE_DIRS="product-service order-service inventory-service api-gateway"
+COMPOSE_DIRS="product-service order-service inventory-service user-service api-gateway"
 
 # Timeouts in seconds. Keycloak and the first start of each database (initdb) take the longest.
 INFRA_TIMEOUT="${INFRA_TIMEOUT:-240}"
@@ -127,6 +128,10 @@ inventory_db_ready() {
   container_running inventory-service-postgres || return 2
   docker exec inventory-service-postgres pg_isready -q -h 127.0.0.1 -U postgres -d inventory_service || return 1
 }
+user_db_ready() {
+  container_running user-service-postgres || return 2
+  docker exec user-service-postgres pg_isready -q -h 127.0.0.1 -U postgres -d user_service || return 1
+}
 keycloak_ready() {   # the realm URL returns 200 only once the realm is imported
   container_running keycloak || return 2
   curl -sf --max-time 3 "$KEYCLOAK_REALM_URL" >/dev/null
@@ -179,12 +184,12 @@ preflight() {
     printf '      Free them (e.g. stop the container or process) and run again. Nothing was started.\n' >&2
     exit 1
   fi
-  ok "ports 8080, 8081, 8082, 9000 and 4200 are free or already used by this stack"
+  ok "ports 8080, 8081, 8082, 8083, 9000 and 4200 are free or already used by this stack"
 }
 
 # ---------- start steps ----------
 start_infrastructure() {
-  step "1/6 Infrastructure (Docker Compose)"
+  step "1/7 Infrastructure (Docker Compose)"
   local dir
   for dir in $COMPOSE_DIRS; do
     (cd "$ROOT/$dir" && docker compose up -d) >"$LOG_DIR/compose-$dir.log" 2>&1 \
@@ -194,6 +199,7 @@ start_infrastructure() {
   wait_for_container "MongoDB :27017"        mongodb                 mongo_ready
   wait_for_container "PostgreSQL order :5434"     order-service-postgres     order_db_ready
   wait_for_container "PostgreSQL inventory :5435" inventory-service-postgres inventory_db_ready
+  wait_for_container "PostgreSQL user :5433"      user-service-postgres      user_db_ready
   wait_for_container "Keycloak realm :8181"  keycloak                keycloak_ready
   ok "infrastructure is ready"
 }
@@ -220,7 +226,7 @@ start_backend_service() {   # start_backend_service <step-label> <name> <port>
 }
 
 start_frontend() {
-  step "6/6 frontend :$FRONTEND_PORT"
+  step "7/7 frontend :$FRONTEND_PORT"
   if pid_alive frontend; then
     ok "already running (pid $(cat "$PID_DIR/frontend.pid"))"
     return
@@ -248,7 +254,7 @@ cmd_start() {
   start_infrastructure
   local entry n=2
   for entry in $BACKEND_SERVICES; do
-    start_backend_service "$n/6" "${entry%%:*}" "${entry##*:}"
+    start_backend_service "$n/7" "${entry%%:*}" "${entry##*:}"
     n=$((n + 1))
   done
   start_frontend
@@ -302,7 +308,7 @@ cmd_status() {
   done
   step "Infrastructure containers"
   docker ps --filter name='^mongodb$' --filter name='^order-service-postgres$' --filter name='^inventory-service-postgres$' \
-    --filter name='^keycloak$' --filter name='^keycloak-mysql$' \
+    --filter name='^user-service-postgres$' --filter name='^keycloak$' --filter name='^keycloak-mysql$' \
     --format '  {{.Names}}\t{{.Status}}' 2>/dev/null || warn "Docker is not reachable"
 }
 

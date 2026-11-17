@@ -1,0 +1,97 @@
+<div class="container mx-auto p-4 max-w-lg">
+  <a routerLink="/" class="inline-block mb-2 text-blue-500 hover:underline">&larr; Back to products</a>
+  <h2 class="text-2xl font-bold mb-4">Create an account</h2>
+
+  <div *ngIf="isAuthenticated" role="status" class="text-gray-700">
+    You are already logged in.
+  </div>
+
+  <ng-container *ngIf="!isAuthenticated">
+    <div *ngIf="successMessage" role="status" class="mb-4 text-green-600">
+      {{ successMessage }}
+      <button type="button" (click)="login()"
+              class="ml-2 bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">
+        Log in
+      </button>
+    </div>
+    <div *ngIf="errorMessage" role="alert" class="mb-4 text-red-500">{{ errorMessage }}</div>
+
+    <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" *ngIf="!successMessage">
+      <div class="mb-4">
+        <label class="block text-gray-700" for="username">Username</label>
+        <input type="text" id="username" formControlName="username"
+               class="border rounded w-full py-2 px-3 text-gray-700"/>
+        <div *ngIf="username?.invalid && (username?.dirty || username?.touched)" class="text-red-500">
+          <div *ngIf="username?.errors?.['required']">Username is required.</div>
+          <div *ngIf="username?.errors?.['minlength']">Username must be at least 3 characters.</div>
+          <div *ngIf="username?.errors?.['maxlength']">Username must be at most 50 characters.</div>
+          <div *ngIf="username?.errors?.['pattern']">Only letters, digits, dot, underscore and hyphen are allowed.</div>
+          <div *ngIf="username?.errors?.['taken']">This username is already taken.</div>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-gray-700" for="email">Email</label>
+        <input type="email" id="email" formControlName="email"
+               class="border rounded w-full py-2 px-3 text-gray-700"/>
+        <div *ngIf="email?.invalid && (email?.dirty || email?.touched)" class="text-red-500">
+          <div *ngIf="email?.errors?.['required']">Email is required.</div>
+          <div *ngIf="email?.errors?.['email']">Email is not valid.</div>
+          <div *ngIf="email?.errors?.['maxlength']">Email is too long.</div>
+          <div *ngIf="email?.errors?.['taken']">An account with this email already exists.</div>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-gray-700" for="firstName">First name</label>
+        <input type="text" id="firstName" formControlName="firstName"
+               class="border rounded w-full py-2 px-3 text-gray-700"/>
+        <div *ngIf="firstName?.invalid && (firstName?.dirty || firstName?.touched)" class="text-red-500">
+          <div *ngIf="firstName?.errors?.['required']">First name is required.</div>
+          <div *ngIf="firstName?.errors?.['maxlength']">First name is too long.</div>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-gray-700" for="lastName">Last name</label>
+        <input type="text" id="lastName" formControlName="lastName"
+               class="border rounded w-full py-2 px-3 text-gray-700"/>
+        <div *ngIf="lastName?.invalid && (lastName?.dirty || lastName?.touched)" class="text-red-500">
+          <div *ngIf="lastName?.errors?.['required']">Last name is required.</div>
+          <div *ngIf="lastName?.errors?.['maxlength']">Last name is too long.</div>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-gray-700" for="password">Password</label>
+        <input type="password" id="password" formControlName="password"
+               class="border rounded w-full py-2 px-3 text-gray-700"/>
+        <div *ngIf="password?.invalid && (password?.dirty || password?.touched)" class="text-red-500">
+          <div *ngIf="password?.errors?.['required']">Password is required.</div>
+          <div *ngIf="password?.errors?.['minlength']">Password must be at least 8 characters.</div>
+          <div *ngIf="password?.errors?.['maxlength']">Password must be at most 128 characters.</div>
+          <div *ngIf="password?.errors?.['pattern']">Include an upper-case letter, a lower-case letter and a digit.</div>
+          <div *ngIf="password?.errors?.['weak']">Please choose a stronger password.</div>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-gray-700" for="confirmPassword">Confirm password</label>
+        <input type="password" id="confirmPassword" formControlName="confirmPassword"
+               class="border rounded w-full py-2 px-3 text-gray-700"/>
+        <div *ngIf="confirmPassword?.invalid && (confirmPassword?.dirty || confirmPassword?.touched)" class="text-red-500">
+          <div *ngIf="confirmPassword?.errors?.['required']">Please confirm your password.</div>
+        </div>
+        <div *ngIf="registerForm.errors?.['passwordMismatch'] && confirmPassword?.touched" class="text-red-500">
+          Passwords do not match.
+        </div>
+      </div>
+
+      <button type="submit"
+              class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-green-500"
+              [disabled]="registerForm.invalid || isSubmitting">
+        {{ isSubmitting ? 'Creating…' : 'Create account' }}
+      </button>
+    </form>
+  </ng-container>
+</div>

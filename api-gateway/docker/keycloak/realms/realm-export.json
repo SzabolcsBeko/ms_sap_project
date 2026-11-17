@@ -37,6 +37,19 @@
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "http://localhost:4200/*"
       }
+    },
+    {
+      "clientId": "user-service",
+      "name": "User Service",
+      "description": "Confidential service-account client. Used by user-service to call the Keycloak Admin REST API (create/delete users). Never used for interactive login.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "change-me-dev-secret",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
     }
   ],
   "users": [
@@ -58,6 +71,18 @@
         "default-roles-spring-microservices-security-realm",
         "offline_access"
       ]
+    },
+    {
+      "username": "service-account-user-service",
+      "enabled": true,
+      "serviceAccountClientId": "user-service",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "view-users",
+          "query-users"
+        ]
+      }
     }
   ]
 }

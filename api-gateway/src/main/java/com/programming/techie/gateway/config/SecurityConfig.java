@@ -18,8 +18,20 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity) throws Exception {
-        return httpSecurity.authorizeHttpRequests(authorize -> authorize
+        return httpSecurity
+                        // Stateless JWT gateway: no server-side session, so CSRF protection is not
+                        // applicable and would otherwise reject the anonymous registration POST.
+                        .csrf(csrf -> csrf.disable())
+                        .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(freeResourceUrls)
+                        .permitAll()
+                        // Registration is public (the visitor has no token yet). Wildcard pattern,
+                        // mirroring the working /aggregate/** rule above. user-service itself still
+                        // requires a valid JWT for everything under /api/user except /register.
+                        .requestMatchers("/api/user/**")
+                        .permitAll()
+                        // Open-circuit fallback must be reachable for the anonymous register call too
+                        .requestMatchers("/fallbackRoute")
                         .permitAll()
                         .anyRequest().authenticated())
                         .cors(cors -> cors.configurationSource(corsConfigurationSource()))
